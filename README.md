@@ -68,7 +68,7 @@ No Debian, o instalador configura PostgreSQL por padrao e grava `DATABASE_URL` e
 O instalador tambem grava o usuario inicial da TronSoft:
 
 ```text
-CENTRAL_ADMIN_EMAIL
+CENTRAL_ADMIN_EMAIL=suporte@tronsoft.com.br
 CENTRAL_ADMIN_PASSWORD
 ```
 

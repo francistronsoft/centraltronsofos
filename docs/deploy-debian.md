@@ -48,7 +48,7 @@ Instalacao sem perguntas:
 ```bash
 CENTRAL_TRONSOFTOS_SETUP_NGINX=yes \
 CENTRAL_TRONSOFTOS_SETUP_POSTGRES=yes \
-CENTRAL_TRONSOFTOS_ADMIN_EMAIL=admin@tronsoft.com.br \
+CENTRAL_TRONSOFTOS_ADMIN_EMAIL=suporte@tronsoft.com.br \
 CENTRAL_TRONSOFTOS_DOMAIN=central.tronsoft.app.br \
 CENTRAL_TRONSOFTOS_PORT=3080 \
 bash install.sh
@@ -60,7 +60,7 @@ Instalacao com Cloudflare Tunnel por token:
 CENTRAL_TRONSOFTOS_SETUP_NGINX=no \
 CENTRAL_TRONSOFTOS_SETUP_POSTGRES=yes \
 CENTRAL_TRONSOFTOS_SETUP_CLOUDFLARED=yes \
-CENTRAL_TRONSOFTOS_ADMIN_EMAIL=admin@tronsoft.com.br \
+CENTRAL_TRONSOFTOS_ADMIN_EMAIL=suporte@tronsoft.com.br \
 CENTRAL_TRONSOFTOS_CLOUDFLARED_TOKEN='COLE_O_TOKEN_DO_TUNNEL_AQUI' \
 bash install.sh
 ```
@@ -71,7 +71,7 @@ Para evitar deixar o token no historico do shell, rode sem a variavel `CENTRAL_T
 CENTRAL_TRONSOFTOS_SETUP_NGINX=no \
 CENTRAL_TRONSOFTOS_SETUP_POSTGRES=yes \
 CENTRAL_TRONSOFTOS_SETUP_CLOUDFLARED=yes \
-CENTRAL_TRONSOFTOS_ADMIN_EMAIL=admin@tronsoft.com.br \
+CENTRAL_TRONSOFTOS_ADMIN_EMAIL=suporte@tronsoft.com.br \
 bash install.sh
 ```
 
@@ -85,7 +85,7 @@ CENTRAL_TRONSOFTOS_SETUP_NGINX=no \
 CENTRAL_TRONSOFTOS_SETUP_POSTGRES=yes \
 CENTRAL_TRONSOFTOS_SETUP_CLOUDFLARED=yes \
 CENTRAL_TRONSOFTOS_CLOUDFLARED_TOKEN_FILE=/root/cloudflare-token.txt \
-CENTRAL_TRONSOFTOS_ADMIN_EMAIL=admin@tronsoft.com.br \
+CENTRAL_TRONSOFTOS_ADMIN_EMAIL=suporte@tronsoft.com.br \
 bash install.sh
 
 rm -f /root/cloudflare-token.txt
@@ -195,7 +195,7 @@ Conteudo inicial:
 ```text
 PORT=3080
 DATABASE_URL=postgresql://central_tronsoftos:senha@127.0.0.1:5432/central_tronsoftos
-CENTRAL_ADMIN_EMAIL=admin@tronsoft.com.br
+CENTRAL_ADMIN_EMAIL=suporte@tronsoft.com.br
 CENTRAL_ADMIN_PASSWORD=senha-forte
 ```
 

@@ -136,7 +136,7 @@ function publicUser(user) {
 
 function bootstrapUsers(db) {
   if (db.users.length > 0) return false;
-  const email = process.env.CENTRAL_ADMIN_EMAIL || "admin@tronsoft.local";
+  const email = process.env.CENTRAL_ADMIN_EMAIL || "suporte@tronsoft.com.br";
   const password = process.env.CENTRAL_ADMIN_PASSWORD || "admin123";
   db.users.push({
     id: randomUUID(),

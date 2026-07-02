@@ -36,7 +36,8 @@ Padroes do instalador:
 - ambiente em `/etc/central-tronsoftos/central.env`;
 - servico `central-tronsoftos.service`;
 - porta `3080`;
-- dominio Nginx `central.tronsoft.app.br`.
+- dominio `central.tronsoft.app.br`;
+- opcionalmente instala `cloudflared` e registra o servico do Tunnel.
 
 Instalacao sem perguntas:
 
@@ -47,26 +48,47 @@ CENTRAL_TRONSOFTOS_PORT=3080 \
 bash install.sh
 ```
 
+Instalacao com Cloudflare Tunnel por token:
+
+```bash
+CENTRAL_TRONSOFTOS_SETUP_NGINX=no \
+CENTRAL_TRONSOFTOS_SETUP_CLOUDFLARED=yes \
+CENTRAL_TRONSOFTOS_CLOUDFLARED_TOKEN='COLE_O_TOKEN_DO_TUNNEL_AQUI' \
+bash install.sh
+```
+
+Para evitar deixar o token no historico do shell, rode sem a variavel `CENTRAL_TRONSOFTOS_CLOUDFLARED_TOKEN`; o instalador vai pedir o token em modo oculto:
+
+```bash
+CENTRAL_TRONSOFTOS_SETUP_NGINX=no \
+CENTRAL_TRONSOFTOS_SETUP_CLOUDFLARED=yes \
+bash install.sh
+```
+
 Comandos uteis:
 
 ```bash
 sudo systemctl status central-tronsoftos
 sudo journalctl -u central-tronsoftos -f
+sudo systemctl status cloudflared
+sudo journalctl -u cloudflared -f
 curl http://127.0.0.1:3080/health
 ```
 
 ## Cloudflare Tunnel
 
-Se voce ja usa Cloudflare Tunnel para `central.tronsoft.app.br`, o tunnel pode apontar direto para:
+Se voce ja usa Cloudflare Tunnel para `central.tronsoft.app.br`, o tunnel deve apontar direto para:
 
 ```text
 http://127.0.0.1:3080
 ```
 
-Nesse caso, responda `n` quando o instalador perguntar sobre Nginx, ou rode:
+Nesse caso, responda `n` quando o instalador perguntar sobre Nginx, e responda `s` quando ele perguntar sobre `cloudflared`. Tambem pode rodar sem perguntas:
 
 ```bash
-CENTRAL_TRONSOFTOS_SETUP_NGINX=no bash install.sh
+CENTRAL_TRONSOFTOS_SETUP_NGINX=no \
+CENTRAL_TRONSOFTOS_SETUP_CLOUDFLARED=yes \
+bash install.sh
 ```
 
 Se preferir usar Nginx como intermediario local, deixe o instalador configurar Nginx e aponte o tunnel para:

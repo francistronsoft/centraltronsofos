@@ -11,6 +11,8 @@ ENV_FILE="${CENTRAL_TRONSOFTOS_ENV_FILE:-/etc/central-tronsoftos/central.env}"
 PORT="${CENTRAL_TRONSOFTOS_PORT:-3080}"
 DOMAIN="${CENTRAL_TRONSOFTOS_DOMAIN:-central.tronsoft.app.br}"
 SETUP_NGINX="${CENTRAL_TRONSOFTOS_SETUP_NGINX:-ask}"
+SETUP_CLOUDFLARED="${CENTRAL_TRONSOFTOS_SETUP_CLOUDFLARED:-ask}"
+CLOUDFLARED_TOKEN="${CENTRAL_TRONSOFTOS_CLOUDFLARED_TOKEN:-}"
 INSTALL_NODE="${CENTRAL_TRONSOFTOS_INSTALL_NODE:-ask}"
 NODE_MAJOR="${CENTRAL_TRONSOFTOS_NODE_MAJOR:-22}"
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -58,6 +60,20 @@ ask_yes_no() {
   [[ "$answer" =~ ^[sSyY]$ ]]
 }
 
+ask_secret() {
+  local question="$1"
+  local answer=""
+
+  if [[ ! -t 0 ]]; then
+    printf ''
+    return
+  fi
+
+  read -r -s -p "$question " answer
+  printf '\n' >&2
+  printf '%s' "$answer"
+}
+
 node_major_version() {
   if ! command -v node >/dev/null 2>&1; then
     echo 0
@@ -100,6 +116,16 @@ ensure_node() {
 
   major="$(node_major_version)"
   [[ "$major" -ge 20 ]] || fail "Node.js instalado, mas a versao ainda e menor que 20."
+}
+
+ensure_curl() {
+  if command -v curl >/dev/null 2>&1; then
+    return
+  fi
+
+  log "Instalando curl"
+  as_root apt-get update
+  as_root apt-get install -y ca-certificates curl
 }
 
 ensure_user() {
@@ -230,6 +256,89 @@ maybe_setup_nginx() {
   esac
 }
 
+cloudflared_deb_url() {
+  local arch
+  arch="$(dpkg --print-architecture)"
+  case "$arch" in
+    amd64)
+      printf 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb'
+      ;;
+    arm64)
+      printf 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64.deb'
+      ;;
+    armhf)
+      printf 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm.deb'
+      ;;
+    *)
+      fail "Arquitetura nao suportada automaticamente para cloudflared: $arch"
+      ;;
+  esac
+}
+
+install_cloudflared() {
+  if command -v cloudflared >/dev/null 2>&1; then
+    log "cloudflared encontrado: $(cloudflared --version | head -n 1)"
+    return
+  fi
+
+  ensure_curl
+  need_cmd dpkg
+
+  local deb
+  deb="$(mktemp --suffix=.deb)"
+  log "Baixando cloudflared"
+  curl -fsSL "$(cloudflared_deb_url)" -o "$deb"
+  as_root dpkg -i "$deb" || {
+    as_root apt-get install -f -y
+    as_root dpkg -i "$deb"
+  }
+  rm -f "$deb"
+}
+
+setup_cloudflared() {
+  install_cloudflared
+
+  local token="$CLOUDFLARED_TOKEN"
+  if [[ -z "$token" ]]; then
+    token="$(ask_secret "Cole o token do Cloudflare Tunnel:")"
+  fi
+  [[ -n "$token" ]] || fail "Token do Cloudflare Tunnel nao informado."
+
+  if systemctl list-unit-files cloudflared.service >/dev/null 2>&1; then
+    warn "Servico cloudflared ja existe. Vou reiniciar sem reinstalar o token."
+    as_root systemctl enable cloudflared
+    as_root systemctl restart cloudflared
+  else
+    log "Instalando servico cloudflared"
+    as_root cloudflared service install "$token"
+    as_root systemctl enable cloudflared
+    as_root systemctl restart cloudflared
+  fi
+
+  as_root systemctl is-active --quiet cloudflared || {
+    as_root systemctl status cloudflared --no-pager || true
+    fail "cloudflared nao ficou ativo."
+  }
+}
+
+maybe_setup_cloudflared() {
+  case "$SETUP_CLOUDFLARED" in
+    yes|sim|s|true|1)
+      setup_cloudflared
+      ;;
+    no|nao|n|false|0)
+      log "Pulando Cloudflare Tunnel."
+      ;;
+    *)
+      if ask_yes_no "Instalar/configurar cloudflared com token do Tunnel para $DOMAIN?" "s"; then
+        setup_cloudflared
+      else
+        log "Pulando Cloudflare Tunnel."
+      fi
+      ;;
+  esac
+}
+
 health_check() {
   log "Validando servico"
   sleep 2
@@ -261,6 +370,7 @@ main() {
   write_env
   write_systemd
   maybe_setup_nginx
+  maybe_setup_cloudflared
   health_check
 
   log "Instalacao concluida"
@@ -272,6 +382,8 @@ main() {
   printf '\nComandos uteis:\n'
   printf '  sudo systemctl status %s\n' "$SERVICE_NAME"
   printf '  sudo journalctl -u %s -f\n' "$SERVICE_NAME"
+  printf '  sudo systemctl status cloudflared\n'
+  printf '  sudo journalctl -u cloudflared -f\n'
 }
 
 main "$@"

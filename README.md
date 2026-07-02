@@ -41,6 +41,14 @@ cd central-tronsoftos
 bash install.sh
 ```
 
+Com Cloudflare Tunnel por token:
+
+```bash
+CENTRAL_TRONSOFTOS_SETUP_NGINX=no \
+CENTRAL_TRONSOFTOS_SETUP_CLOUDFLARED=yes \
+bash install.sh
+```
+
 Guia detalhado com `systemd` e Nginx: `docs/deploy-debian.md`.
 
 ## API inicial

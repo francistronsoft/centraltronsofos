@@ -13,6 +13,11 @@ DOMAIN="${CENTRAL_TRONSOFTOS_DOMAIN:-central.tronsoft.app.br}"
 SETUP_NGINX="${CENTRAL_TRONSOFTOS_SETUP_NGINX:-ask}"
 SETUP_CLOUDFLARED="${CENTRAL_TRONSOFTOS_SETUP_CLOUDFLARED:-ask}"
 CLOUDFLARED_TOKEN="${CENTRAL_TRONSOFTOS_CLOUDFLARED_TOKEN:-}"
+SETUP_POSTGRES="${CENTRAL_TRONSOFTOS_SETUP_POSTGRES:-ask}"
+POSTGRES_DB="${CENTRAL_TRONSOFTOS_POSTGRES_DB:-central_tronsoftos}"
+POSTGRES_USER="${CENTRAL_TRONSOFTOS_POSTGRES_USER:-central_tronsoftos}"
+POSTGRES_PASSWORD="${CENTRAL_TRONSOFTOS_POSTGRES_PASSWORD:-}"
+DATABASE_URL="${CENTRAL_TRONSOFTOS_DATABASE_URL:-}"
 INSTALL_NODE="${CENTRAL_TRONSOFTOS_INSTALL_NODE:-ask}"
 NODE_MAJOR="${CENTRAL_TRONSOFTOS_NODE_MAJOR:-22}"
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -40,6 +45,14 @@ as_root() {
     "$@"
   else
     sudo "$@"
+  fi
+}
+
+as_postgres() {
+  if [[ "$(id -u)" -eq 0 ]]; then
+    runuser -u postgres -- "$@"
+  else
+    sudo -u postgres "$@"
   fi
 }
 
@@ -128,6 +141,82 @@ ensure_curl() {
   as_root apt-get install -y ca-certificates curl
 }
 
+validate_pg_name() {
+  local value="$1"
+  local label="$2"
+  [[ "$value" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || fail "$label invalido para PostgreSQL: $value"
+}
+
+sql_literal() {
+  local value="$1"
+  printf "'%s'" "${value//\'/\'\'}"
+}
+
+random_password() {
+  node -e "console.log(require('node:crypto').randomBytes(24).toString('base64url'))"
+}
+
+setup_postgres() {
+  validate_pg_name "$POSTGRES_DB" "Nome do banco"
+  validate_pg_name "$POSTGRES_USER" "Usuario do banco"
+
+  log "Instalando/configurando PostgreSQL"
+  as_root apt-get update
+  as_root apt-get install -y postgresql postgresql-client
+  as_root systemctl enable postgresql
+  as_root systemctl start postgresql
+
+  if [[ -z "$POSTGRES_PASSWORD" ]]; then
+    POSTGRES_PASSWORD="$(random_password)"
+  fi
+
+  local password_sql
+  password_sql="$(sql_literal "$POSTGRES_PASSWORD")"
+
+  as_postgres psql -v ON_ERROR_STOP=1 <<EOF
+do \$\$
+begin
+  if not exists (select 1 from pg_roles where rolname = '$POSTGRES_USER') then
+    create role $POSTGRES_USER login password $password_sql;
+  else
+    alter role $POSTGRES_USER with login password $password_sql;
+  end if;
+end
+\$\$;
+EOF
+
+  if ! as_postgres psql -tAc "select 1 from pg_database where datname = '$POSTGRES_DB'" | grep -q 1; then
+    as_postgres createdb -O "$POSTGRES_USER" "$POSTGRES_DB"
+  fi
+
+  as_postgres psql -v ON_ERROR_STOP=1 -d "$POSTGRES_DB" -c "grant all privileges on database $POSTGRES_DB to $POSTGRES_USER;"
+  as_postgres psql -v ON_ERROR_STOP=1 -d "$POSTGRES_DB" -c "grant all on schema public to $POSTGRES_USER;"
+  DATABASE_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:5432/${POSTGRES_DB}"
+}
+
+maybe_setup_postgres() {
+  if [[ -n "$DATABASE_URL" ]]; then
+    log "DATABASE_URL ja informado; pulando criacao local do PostgreSQL"
+    return
+  fi
+
+  case "$SETUP_POSTGRES" in
+    yes|sim|s|true|1)
+      setup_postgres
+      ;;
+    no|nao|n|false|0)
+      warn "PostgreSQL nao sera configurado. A Central usara JSON local se DATABASE_URL ficar vazio."
+      ;;
+    *)
+      if ask_yes_no "Instalar/configurar PostgreSQL local para a Central?" "s"; then
+        setup_postgres
+      else
+        warn "PostgreSQL nao sera configurado. A Central usara JSON local se DATABASE_URL ficar vazio."
+      fi
+      ;;
+  esac
+}
+
 ensure_user() {
   if id "$APP_USER" >/dev/null 2>&1; then
     log "Usuario $APP_USER ja existe"
@@ -167,16 +256,37 @@ copy_app() {
   as_root chown -R "$APP_USER:$APP_GROUP" "$INSTALL_ROOT"
 }
 
-write_env() {
-  if [[ -f "$ENV_FILE" ]]; then
-    log "Arquivo de ambiente ja existe: $ENV_FILE"
-    return
-  fi
+install_app_dependencies() {
+  log "Instalando dependencias Node da Central"
+  (
+    cd "$APP_DIR"
+    as_root npm install --omit=dev
+  )
+  as_root chown -R "$APP_USER:$APP_GROUP" "$INSTALL_ROOT"
+}
 
-  log "Criando $ENV_FILE"
-  as_root tee "$ENV_FILE" >/dev/null <<EOF
-PORT=$PORT
-EOF
+upsert_env_line() {
+  local key="$1"
+  local value="$2"
+  local escaped
+  escaped="${value//\\/\\\\}"
+  escaped="${escaped//&/\\&}"
+
+  if as_root test -f "$ENV_FILE" && as_root grep -q "^${key}=" "$ENV_FILE"; then
+    as_root sed -i "s#^${key}=.*#${key}=${escaped}#" "$ENV_FILE"
+  else
+    printf '%s=%s\n' "$key" "$value" | as_root tee -a "$ENV_FILE" >/dev/null
+  fi
+}
+
+write_env() {
+  log "Configurando $ENV_FILE"
+  as_root mkdir -p "$(dirname "$ENV_FILE")"
+  as_root touch "$ENV_FILE"
+  upsert_env_line "PORT" "$PORT"
+  if [[ -n "$DATABASE_URL" ]]; then
+    upsert_env_line "DATABASE_URL" "$DATABASE_URL"
+  fi
   as_root chmod 640 "$ENV_FILE"
   as_root chown "root:$APP_GROUP" "$ENV_FILE"
 }
@@ -365,8 +475,10 @@ main() {
 
   log "Instalador da Central TronSoftOS"
   ensure_node
+  maybe_setup_postgres
   ensure_user
   copy_app
+  install_app_dependencies
   write_env
   write_systemd
   maybe_setup_nginx

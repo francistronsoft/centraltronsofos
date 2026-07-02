@@ -16,6 +16,7 @@ A Central TronSoftOS nasce como um sistema separado do TronSoftOS principal. Ela
 ## Como executar agora
 
 ```bash
+npm install
 npm run dev
 ```
 
@@ -51,6 +52,8 @@ bash install.sh
 
 Guia detalhado com `systemd` e Nginx: `docs/deploy-debian.md`.
 
+No Debian, o instalador configura PostgreSQL por padrao e grava `DATABASE_URL` em `/etc/central-tronsoftos/central.env`. Sem `DATABASE_URL`, a Central usa JSON local apenas como fallback de desenvolvimento.
+
 ## API inicial
 
 A primeira implementacao recebe:
@@ -62,6 +65,11 @@ A primeira implementacao recebe:
 - engine, versao e schema do banco usado pelo cliente;
 - heartbeats de saude;
 - notificacoes e alertas.
+
+Persistencia:
+
+- PostgreSQL no Debian/instalacao real;
+- JSON local apenas em desenvolvimento quando `DATABASE_URL` nao estiver configurado.
 
 Contrato detalhado: `docs/api-ingestao.md`.
 
@@ -91,6 +99,7 @@ prototype/
   app.js
 src/
   server.js
+  storage.js
 ```
 
 ## Prototipo

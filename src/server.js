@@ -1,13 +1,12 @@
 import { createServer } from "node:http";
-import { readFile, writeFile, mkdir, stat } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { extname, join, normalize, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { readDb, storageInfo, writeDb } from "./storage.js";
 
 const rootDir = resolve(fileURLToPath(new URL("..", import.meta.url)));
-const dataDir = join(rootDir, "data");
-const dataFile = join(dataDir, "central-db.json");
 const prototypeDir = join(rootDir, "prototype");
 const port = Number(process.env.PORT || 3080);
 
@@ -16,15 +15,6 @@ const contentTypes = {
   ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8"
-};
-
-const emptyDb = {
-  resellers: [],
-  clients: [],
-  pairingTokens: [],
-  installations: [],
-  alerts: [],
-  events: []
 };
 
 function nowIso() {
@@ -57,27 +47,6 @@ function clientKey(customer) {
 
 function generatePairingToken() {
   return `cts_${randomUUID().replace(/-/g, "")}`;
-}
-
-async function ensureDb() {
-  await mkdir(dataDir, { recursive: true });
-
-  try {
-    await stat(dataFile);
-  } catch {
-    await writeDb(emptyDb);
-  }
-}
-
-async function readDb() {
-  await ensureDb();
-  const raw = await readFile(dataFile, "utf8");
-  return { ...emptyDb, ...JSON.parse(raw) };
-}
-
-async function writeDb(db) {
-  await mkdir(dataDir, { recursive: true });
-  await writeFile(dataFile, `${JSON.stringify(db, null, 2)}\n`, "utf8");
 }
 
 async function readJson(request) {
@@ -479,7 +448,7 @@ async function handleApi(request, response, pathname) {
   }
 
   if (request.method === "GET" && pathname === "/health") {
-    sendJson(response, 200, { ok: true, service: "central-tronsoftos", checkedAt: nowIso() });
+    sendJson(response, 200, { ok: true, service: "central-tronsoftos", storage: storageInfo(), checkedAt: nowIso() });
     return;
   }
 

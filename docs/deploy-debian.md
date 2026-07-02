@@ -6,14 +6,16 @@ Este guia instala a Central TronSoftOS como servico `systemd` em um servidor Deb
 
 - Frontend simples servido pelo proprio Node em `/`.
 - API de ingestao em `/api/tronsoftos/*`.
-- Banco local em arquivo JSON dentro de `data/central-db.json`.
+- Persistencia em PostgreSQL quando `DATABASE_URL` esta configurado.
+- Fallback local em JSON dentro de `data/central-db.json` apenas para desenvolvimento.
 
-Importante: o banco JSON e suficiente para teste/piloto. Para producao, o proximo passo recomendado e trocar esse armazenamento por PostgreSQL.
+Importante: no Debian, o instalador configura PostgreSQL por padrao. O JSON nao deve ser usado para producao.
 
 ## Requisitos
 
 - Debian com acesso SSH.
 - Node.js 20 ou superior.
+- PostgreSQL local ou `DATABASE_URL` de um PostgreSQL existente.
 - Usuario Linux dedicado para rodar a aplicacao.
 - Porta liberada no firewall, ou Nginx fazendo proxy.
 
@@ -35,6 +37,7 @@ Padroes do instalador:
 - usuario de servico `central-tronsoftos`;
 - ambiente em `/etc/central-tronsoftos/central.env`;
 - servico `central-tronsoftos.service`;
+- PostgreSQL local com banco `central_tronsoftos`;
 - porta `3080`;
 - dominio `central.tronsoft.app.br`;
 - opcionalmente instala `cloudflared` e registra o servico do Tunnel.
@@ -43,6 +46,7 @@ Instalacao sem perguntas:
 
 ```bash
 CENTRAL_TRONSOFTOS_SETUP_NGINX=yes \
+CENTRAL_TRONSOFTOS_SETUP_POSTGRES=yes \
 CENTRAL_TRONSOFTOS_DOMAIN=central.tronsoft.app.br \
 CENTRAL_TRONSOFTOS_PORT=3080 \
 bash install.sh
@@ -52,6 +56,7 @@ Instalacao com Cloudflare Tunnel por token:
 
 ```bash
 CENTRAL_TRONSOFTOS_SETUP_NGINX=no \
+CENTRAL_TRONSOFTOS_SETUP_POSTGRES=yes \
 CENTRAL_TRONSOFTOS_SETUP_CLOUDFLARED=yes \
 CENTRAL_TRONSOFTOS_CLOUDFLARED_TOKEN='COLE_O_TOKEN_DO_TUNNEL_AQUI' \
 bash install.sh
@@ -61,7 +66,16 @@ Para evitar deixar o token no historico do shell, rode sem a variavel `CENTRAL_T
 
 ```bash
 CENTRAL_TRONSOFTOS_SETUP_NGINX=no \
+CENTRAL_TRONSOFTOS_SETUP_POSTGRES=yes \
 CENTRAL_TRONSOFTOS_SETUP_CLOUDFLARED=yes \
+bash install.sh
+```
+
+Usando um PostgreSQL externo:
+
+```bash
+CENTRAL_TRONSOFTOS_DATABASE_URL='postgresql://usuario:senha@host:5432/banco' \
+CENTRAL_TRONSOFTOS_SETUP_POSTGRES=no \
 bash install.sh
 ```
 
@@ -73,6 +87,16 @@ sudo journalctl -u central-tronsoftos -f
 sudo systemctl status cloudflared
 sudo journalctl -u cloudflared -f
 curl http://127.0.0.1:3080/health
+```
+
+O `/health` deve indicar o storage ativo:
+
+```json
+{
+  "storage": {
+    "driver": "postgres"
+  }
+}
 ```
 
 ## Cloudflare Tunnel
@@ -87,6 +111,7 @@ Nesse caso, responda `n` quando o instalador perguntar sobre Nginx, e responda `
 
 ```bash
 CENTRAL_TRONSOFTOS_SETUP_NGINX=no \
+CENTRAL_TRONSOFTOS_SETUP_POSTGRES=yes \
 CENTRAL_TRONSOFTOS_SETUP_CLOUDFLARED=yes \
 bash install.sh
 ```
@@ -105,13 +130,14 @@ http://127.0.0.1:80
 ssh usuario@ip-do-servidor
 ```
 
-## 2. Instalar Node.js
+## 2. Instalar Node.js e PostgreSQL
 
 Se o Node.js ainda nao estiver instalado, instale uma versao LTS recente. Exemplo usando NodeSource:
 
 ```bash
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt-get install -y nodejs
+sudo apt-get install -y postgresql postgresql-client
 node --version
 ```
 
@@ -148,6 +174,7 @@ Conteudo inicial:
 
 ```text
 PORT=3080
+DATABASE_URL=postgresql://central_tronsoftos:senha@127.0.0.1:5432/central_tronsoftos
 ```
 
 ## 6. Criar servico systemd
@@ -260,7 +287,7 @@ sudo certbot --nginx -d central.seudominio.com.br
 
 ## Observacoes para piloto
 
-- Faça backup do arquivo `data/central-db.json`.
+- Faca backup do PostgreSQL.
 - Mantenha a porta `3080` fechada externamente se estiver usando Nginx.
 - Use HTTPS antes de enviar tokens de instalacao pela internet.
-- Para producao, migrar dados para PostgreSQL e adicionar autenticacao administrativa.
+- Para producao, adicionar autenticacao administrativa completa e politicas de backup/retencao.

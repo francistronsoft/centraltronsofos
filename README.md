@@ -13,6 +13,11 @@ A Central TronSoftOS nasce como um sistema separado do TronSoftOS principal. Ela
 - **Worker de 0auth**: servico separado para rotinas de autenticacao/autorizacao, sincronizacao de credenciais, renovacao de tokens e eventos de identidade.
 - **Agentes TronSoftOS**: clientes monitorados enviam sinais de saude, versao, status e eventos.
 
+## Acesso e escopo
+
+- **TronSoft** (`tronsoft_admin`): visualiza todos os clientes/TronSoftOS, filtra por revenda, cadastra clientes proprios ou vinculados a uma revenda.
+- **Revenda** (`reseller_user`): visualiza e cadastra apenas clientes vinculados a sua propria revenda.
+
 ## Como executar agora
 
 ```bash
@@ -53,6 +58,13 @@ bash install.sh
 Guia detalhado com `systemd` e Nginx: `docs/deploy-debian.md`.
 
 No Debian, o instalador configura PostgreSQL por padrao e grava `DATABASE_URL` em `/etc/central-tronsoftos/central.env`. Sem `DATABASE_URL`, a Central usa JSON local apenas como fallback de desenvolvimento.
+
+O instalador tambem grava o usuario inicial da TronSoft:
+
+```text
+CENTRAL_ADMIN_EMAIL
+CENTRAL_ADMIN_PASSWORD
+```
 
 ## API inicial
 

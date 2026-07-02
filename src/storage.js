@@ -9,6 +9,8 @@ const dataFile = join(dataDir, "central-db.json");
 const emptyDb = {
   resellers: [],
   clients: [],
+  users: [],
+  sessions: [],
   pairingTokens: [],
   installations: [],
   alerts: [],
@@ -105,4 +107,3 @@ export function storageInfo() {
     databaseUrlConfigured: usePostgres()
   };
 }
-

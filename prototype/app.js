@@ -1,117 +1,162 @@
-const fallbackClients = [
-  {
-    name: "Mercado Sol Nascente",
-    reseller: "Alpha Sistemas",
-    environment: "Matriz",
-    version: "2026.6.12",
-    status: "online",
-    lastSeen: "ha 2 min"
-  },
-  {
-    name: "Farmacia Vida Plena",
-    reseller: "Alpha Sistemas",
-    environment: "Loja 02",
-    version: "2026.5.28",
-    status: "warning",
-    lastSeen: "ha 18 min"
-  },
-  {
-    name: "Autopecas Avenida",
-    reseller: "Norte Tech",
-    environment: "Servidor fiscal",
-    version: "2026.6.08",
-    status: "online",
-    lastSeen: "ha 5 min"
-  },
-  {
-    name: "Distribuidora Prisma",
-    reseller: "Norte Tech",
-    environment: "Operacao",
-    version: "2026.4.19",
-    status: "offline",
-    lastSeen: "ha 2 h"
-  }
-];
-
-const fallbackAuthEvents = [
-  {
-    title: "Identidade sincronizada",
-    detail: "usuario@alphasistemas.com.br"
-  },
-  {
-    title: "Token renovado",
-    detail: "Worker 0auth concluiu a rotina agendada"
-  },
-  {
-    title: "Permissoes atualizadas",
-    detail: "Perfil operador aplicado em 3 usuarios"
-  }
-];
-
 const statusLabels = {
   online: "Online",
   warning: "Atencao",
-  offline: "Offline"
+  offline: "Offline",
+  unknown: "Desconhecido"
 };
 
-let currentClients = fallbackClients;
-let currentAuthEvents = fallbackAuthEvents;
+let currentUser = null;
+let currentClients = [];
+let currentAuthEvents = [];
+let currentResellers = [];
+
+function selectedResellerId() {
+  return document.querySelector("#reseller-filter").value || "";
+}
+
+function querySuffix() {
+  const resellerId = selectedResellerId();
+  return resellerId ? `?resellerId=${encodeURIComponent(resellerId)}` : "";
+}
+
+async function api(path, options = {}) {
+  const response = await fetch(path, {
+    credentials: "include",
+    ...options,
+    headers: {
+      ...(options.body ? { "content-type": "application/json" } : {}),
+      ...(options.headers || {})
+    }
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error || `HTTP ${response.status}`);
+  }
+  return payload;
+}
+
+function showLogin() {
+  document.querySelector("#login-view").hidden = false;
+  document.querySelector("#app-shell").hidden = true;
+}
+
+function showApp() {
+  document.querySelector("#login-view").hidden = true;
+  document.querySelector("#app-shell").hidden = false;
+}
+
+async function loadSession() {
+  try {
+    const payload = await api("/api/auth/me");
+    currentUser = payload.user;
+    showApp();
+    await configureScopeControls();
+    await loadCentralData();
+  } catch {
+    showLogin();
+  }
+}
+
+async function login(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const data = new FormData(form);
+  const error = document.querySelector("#login-error");
+  error.textContent = "";
+
+  try {
+    const payload = await api("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({
+        email: data.get("email"),
+        password: data.get("password")
+      })
+    });
+    currentUser = payload.user;
+    showApp();
+    await configureScopeControls();
+    await loadCentralData();
+  } catch (err) {
+    error.textContent = err.message;
+  }
+}
+
+async function logout() {
+  await api("/api/auth/logout", { method: "POST", body: "{}" }).catch(() => {});
+  currentUser = null;
+  showLogin();
+}
+
+async function configureScopeControls() {
+  document.querySelector("#user-badge").textContent = `${currentUser.name} (${currentUser.role === "tronsoft_admin" ? "TronSoft" : "Revenda"})`;
+  document.querySelector("#scope-label").textContent = currentUser.role === "tronsoft_admin"
+    ? "Painel TronSoft com todos os clientes e filtro por revenda."
+    : "Painel da revenda com apenas seus clientes TronSoftOS.";
+
+  currentResellers = await api("/api/resellers");
+  const filter = document.querySelector("#reseller-filter");
+  const clientResellerSelect = document.querySelector("#client-reseller-select");
+  const resellerNameInput = document.querySelector("#reseller-name-input");
+  const resellerDocumentInput = document.querySelector("#reseller-document-input");
+
+  filter.innerHTML = `<option value="">Todas as revendas</option>${currentResellers
+    .map((reseller) => `<option value="${reseller.id}">${reseller.name}</option>`)
+    .join("")}`;
+  clientResellerSelect.innerHTML = currentResellers
+    .map((reseller) => `<option value="${reseller.id}">${reseller.name}</option>`)
+    .join("");
+
+  const tronsoft = currentUser.role === "tronsoft_admin";
+  filter.hidden = !tronsoft;
+  clientResellerSelect.hidden = !tronsoft;
+  resellerNameInput.hidden = tronsoft;
+  resellerDocumentInput.hidden = tronsoft;
+  resellerNameInput.required = !tronsoft;
+
+  if (!tronsoft && currentResellers[0]) {
+    resellerNameInput.value = currentResellers[0].name;
+    resellerDocumentInput.value = currentResellers[0].document || "";
+  }
+}
 
 async function loadCentralData() {
-  try {
-    const [dashboardResponse, installationsResponse, alertsResponse] = await Promise.all([
-      fetch("/api/dashboard"),
-      fetch("/api/installations"),
-      fetch("/api/alerts")
-    ]);
+  const [dashboard, installations, alerts] = await Promise.all([
+    api(`/api/dashboard${querySuffix()}`),
+    api(`/api/installations${querySuffix()}`),
+    api(`/api/alerts${querySuffix()}`)
+  ]);
 
-    if (!dashboardResponse.ok || !installationsResponse.ok || !alertsResponse.ok) {
-      throw new Error("API indisponivel");
-    }
+  currentClients = installations.map((installation) => ({
+    name: installation.client?.name || "Cliente nao identificado",
+    reseller: installation.reseller?.name || "Sem revenda",
+    environment: installation.name,
+    version: installation.tronsoftos?.version || "-",
+    database: [
+      installation.database?.engine,
+      installation.database?.version,
+      installation.database?.schemaVersion
+    ]
+      .filter(Boolean)
+      .join(" / ") || "-",
+    status: installation.status,
+    lastSeen: installation.lastSeenAt ? new Date(installation.lastSeenAt).toLocaleString("pt-BR") : "-"
+  }));
 
-    const dashboard = await dashboardResponse.json();
-    const installations = await installationsResponse.json();
-    const alerts = await alertsResponse.json();
+  currentAuthEvents = alerts.slice(-4).reverse().map((alert) => ({
+    title: alert.title,
+    detail: `${alert.severity} - ${alert.message || alert.code || "Sem detalhes"}`
+  }));
 
-    currentClients = installations.map((installation) => ({
-      name: installation.client?.name || "Cliente nao identificado",
-      reseller: installation.reseller?.name || "Sem revenda",
-      environment: installation.name,
-      version: installation.tronsoftos?.version || "-",
-      database: [
-        installation.database?.engine,
-        installation.database?.version,
-        installation.database?.schemaVersion
-      ]
-        .filter(Boolean)
-        .join(" / ") || "-",
-      status: installation.status,
-      lastSeen: installation.lastSeenAt ? new Date(installation.lastSeenAt).toLocaleString("pt-BR") : "-"
-    }));
-
-    currentAuthEvents = alerts.slice(-4).reverse().map((alert) => ({
-      title: alert.title,
-      detail: `${alert.severity} - ${alert.message || alert.code || "Sem detalhes"}`
-    }));
-
-    renderMetrics(dashboard);
-  } catch {
-    renderMetrics();
-  }
-
+  renderMetrics(dashboard);
   renderClients(document.querySelector("#client-filter").value);
   renderAuthEvents();
 }
 
-function renderMetrics(dashboard = null) {
-  const resellers = dashboard?.resellers ?? new Set(currentClients.map((client) => client.reseller)).size;
-  const online = dashboard?.online ?? currentClients.filter((client) => client.status === "online").length;
-  const alerts = dashboard?.criticalAlerts ?? currentClients.filter((client) => client.status !== "online").length;
-
-  document.querySelector("#metric-resellers").textContent = resellers;
-  document.querySelector("#metric-clients").textContent = dashboard?.clients ?? currentClients.length;
-  document.querySelector("#metric-online").textContent = online;
-  document.querySelector("#metric-alerts").textContent = alerts;
+function renderMetrics(dashboard) {
+  document.querySelector("#metric-resellers").textContent = dashboard.resellers;
+  document.querySelector("#metric-clients").textContent = dashboard.clients;
+  document.querySelector("#metric-online").textContent = dashboard.online;
+  document.querySelector("#metric-alerts").textContent = dashboard.criticalAlerts;
 }
 
 function renderClients(filter = "") {
@@ -130,7 +175,7 @@ function renderClients(filter = "") {
           <td>${client.reseller}</td>
           <td>${client.environment}</td>
           <td>${client.version}<br><span class="muted-cell">${client.database || "-"}</span></td>
-          <td><span class="status ${client.status}">${statusLabels[client.status]}</span></td>
+          <td><span class="status ${client.status}">${statusLabels[client.status] || client.status}</span></td>
           <td>${client.lastSeen}</td>
         </tr>
       `
@@ -140,8 +185,9 @@ function renderClients(filter = "") {
 
 function renderAuthEvents() {
   const list = document.querySelector("#auth-events");
-
-  const events = currentAuthEvents.length > 0 ? currentAuthEvents : fallbackAuthEvents;
+  const events = currentAuthEvents.length > 0
+    ? currentAuthEvents
+    : [{ title: "Sem eventos", detail: "Nenhum alerta recente no escopo atual" }];
 
   list.innerHTML = events
     .map(
@@ -160,19 +206,22 @@ async function createClient(event) {
   const form = event.currentTarget;
   const data = new FormData(form);
   const result = document.querySelector("#pairing-result");
+  const tronsoft = currentUser.role === "tronsoft_admin";
+  const selectedReseller = currentResellers.find((reseller) => reseller.id === data.get("resellerId"));
 
   result.hidden = false;
   result.textContent = "Gerando token...";
 
   try {
-    const response = await fetch("/api/admin/clients", {
+    const payload = await api("/api/admin/clients", {
       method: "POST",
-      headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        reseller: {
-          name: data.get("resellerName"),
-          document: data.get("resellerDocument")
-        },
+        reseller: tronsoft && selectedReseller
+          ? { name: selectedReseller.name, document: selectedReseller.document }
+          : {
+              name: data.get("resellerName"),
+              document: data.get("resellerDocument")
+            },
         customer: {
           name: data.get("customerName"),
           document: data.get("customerDocument"),
@@ -182,26 +231,25 @@ async function createClient(event) {
       })
     });
 
-    const payload = await response.json();
-    if (!response.ok) {
-      throw new Error(payload.error || `HTTP ${response.status}`);
-    }
-
     result.innerHTML = `
       <strong>Token gerado para ${payload.client.name}</strong><br>
       <code>${payload.pairingToken.token}</code>
     `;
     form.reset();
+    await configureScopeControls();
     await loadCentralData();
   } catch (error) {
     result.textContent = error.message || "Nao foi possivel gerar o token.";
   }
 }
 
+document.querySelector("#login-form").addEventListener("submit", login);
+document.querySelector("#logout-button").addEventListener("click", logout);
+document.querySelector("#refresh-button").addEventListener("click", loadCentralData);
+document.querySelector("#reseller-filter").addEventListener("change", loadCentralData);
 document.querySelector("#client-filter").addEventListener("input", (event) => {
   renderClients(event.target.value);
 });
-
 document.querySelector("#client-form").addEventListener("submit", createClient);
 
-loadCentralData();
+loadSession();

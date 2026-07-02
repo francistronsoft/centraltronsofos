@@ -14,6 +14,8 @@
 - Definir protocolo de comunicacao entre API Central e worker de 0auth.
 - Criar fluxo de cadastro de usuario da revenda.
 - Criar fluxo de login.
+- Separar papeis `tronsoft_admin` e `reseller_user`.
+- Garantir escopo por revenda em clientes, ambientes e alertas.
 - Criar vinculacao entre usuario local e identidade externa.
 - Registrar auditoria de login, renovacao e revogacao.
 
@@ -49,4 +51,3 @@
 - Exibir alertas criticos.
 - Exibir clientes que precisam de atencao.
 - Filtrar por revenda, cliente, severidade e status.
-

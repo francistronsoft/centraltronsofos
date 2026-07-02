@@ -57,9 +57,16 @@ Campos sugeridos:
 - `email`
 - `perfil`
 - `status`
+- `revenda_id`
+- `papel` (`tronsoft_admin` ou `reseller_user`)
 - `identity_subject`
 - `criado_em`
 - `atualizado_em`
+
+Regras:
+
+- usuario `tronsoft_admin` pode visualizar todos os clientes e filtrar por revenda;
+- usuario `reseller_user` deve possuir `revenda_id` e so acessa clientes/ambientes/alertas da propria revenda.
 
 ## Identidade 0auth
 
@@ -106,4 +113,3 @@ Campos sugeridos:
 - `status`
 - `aberto_em`
 - `resolvido_em`
-

@@ -2,13 +2,17 @@ import { createServer } from "node:http";
 import { stat } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { extname, join, normalize, resolve } from "node:path";
-import { randomUUID } from "node:crypto";
+import { pbkdf2Sync, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { readDb, storageInfo, writeDb } from "./storage.js";
 
 const rootDir = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const prototypeDir = join(rootDir, "prototype");
 const port = Number(process.env.PORT || 3080);
+const sessionCookie = "central_session";
+const sessionMaxAgeSeconds = 12 * 60 * 60;
+const tronsoftRole = "tronsoft_admin";
+const resellerRole = "reseller_user";
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -78,9 +82,125 @@ function sendJson(response, status, payload) {
     "content-type": "application/json; charset=utf-8",
     "access-control-allow-origin": "*",
     "access-control-allow-methods": "GET, POST, OPTIONS",
-    "access-control-allow-headers": "content-type, x-installation-token"
+    "access-control-allow-headers": "content-type, x-installation-token",
+    "access-control-allow-credentials": "true"
   });
   response.end(JSON.stringify(payload, null, 2));
+}
+
+function parseCookies(request) {
+  return String(request.headers.cookie || "")
+    .split(";")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .reduce((cookies, part) => {
+      const separator = part.indexOf("=");
+      if (separator > 0) {
+        cookies[part.slice(0, separator)] = decodeURIComponent(part.slice(separator + 1));
+      }
+      return cookies;
+    }, {});
+}
+
+function sessionCookieHeader(request, token, maxAge = sessionMaxAgeSeconds) {
+  const forwardedProto = String(request.headers["x-forwarded-proto"] || "").toLowerCase();
+  const secure = forwardedProto === "https";
+  return `${sessionCookie}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure ? "; Secure" : ""}`;
+}
+
+function hashPassword(password, salt = randomBytes(16).toString("hex")) {
+  const hash = pbkdf2Sync(String(password), salt, 120000, 32, "sha256").toString("hex");
+  return `pbkdf2_sha256$${salt}$${hash}`;
+}
+
+function verifyPassword(password, stored) {
+  const [algorithm, salt, hash] = String(stored || "").split("$");
+  if (algorithm !== "pbkdf2_sha256" || !salt || !hash) return false;
+  const candidate = hashPassword(password, salt).split("$")[2];
+  const left = Buffer.from(candidate, "hex");
+  const right = Buffer.from(hash, "hex");
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
+function publicUser(user) {
+  if (!user) return null;
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    resellerId: user.resellerId || null,
+    status: user.status
+  };
+}
+
+function bootstrapUsers(db) {
+  if (db.users.length > 0) return false;
+  const email = process.env.CENTRAL_ADMIN_EMAIL || "admin@tronsoft.local";
+  const password = process.env.CENTRAL_ADMIN_PASSWORD || "admin123";
+  db.users.push({
+    id: randomUUID(),
+    name: "Administrador TronSoft",
+    email: email.toLowerCase(),
+    passwordHash: hashPassword(password),
+    role: tronsoftRole,
+    resellerId: null,
+    status: "active",
+    createdAt: nowIso(),
+    updatedAt: nowIso()
+  });
+  return true;
+}
+
+async function readDbWithBootstrap() {
+  const db = await readDb();
+  if (bootstrapUsers(db)) {
+    await writeDb(db);
+  }
+  return db;
+}
+
+function sessionUser(db, request) {
+  const token = parseCookies(request)[sessionCookie];
+  if (!token) return null;
+  const session = db.sessions.find((item) => item.token === token && new Date(item.expiresAt).getTime() > Date.now());
+  if (!session) return null;
+  const user = db.users.find((item) => item.id === session.userId && item.status === "active");
+  return user || null;
+}
+
+function requireUser(db, request) {
+  const user = sessionUser(db, request);
+  if (!user) {
+    throw httpError(401, "UNAUTHORIZED");
+  }
+  return user;
+}
+
+function requireTronsoft(user) {
+  if (user.role !== tronsoftRole) {
+    throw httpError(403, "Acesso restrito a TronSoft.");
+  }
+}
+
+function scopedClients(db, user, resellerId = "") {
+  if (user.role === resellerRole) {
+    return db.clients.filter((client) => client.resellerId === user.resellerId);
+  }
+  if (resellerId) {
+    return db.clients.filter((client) => client.resellerId === resellerId);
+  }
+  return db.clients;
+}
+
+function scopedInstallations(db, user, resellerId = "") {
+  const allowedClientIds = new Set(scopedClients(db, user, resellerId).map((client) => client.id));
+  return db.installations.filter((installation) => allowedClientIds.has(installation.clientId));
+}
+
+function scopedAlerts(db, user, resellerId = "") {
+  const allowedInstallationIds = new Set(scopedInstallations(db, user, resellerId).map((installation) => installation.installationId));
+  return db.alerts.filter((alert) => allowedInstallationIds.has(alert.installationId));
 }
 
 function requireText(value, field) {
@@ -310,6 +430,42 @@ function dashboard(db) {
   };
 }
 
+async function handleLogin(request, response) {
+  const payload = await readJson(request);
+  const email = requireText(payload.email, "email").toLowerCase();
+  const password = requireText(payload.password, "password");
+  const db = await readDbWithBootstrap();
+  const user = db.users.find((item) => item.email.toLowerCase() === email && item.status === "active");
+  if (!user || !verifyPassword(password, user.passwordHash)) {
+    throw httpError(401, "Usuario ou senha invalidos.");
+  }
+  const token = randomUUID();
+  const expiresAt = new Date(Date.now() + sessionMaxAgeSeconds * 1000).toISOString();
+  db.sessions.push({ token, userId: user.id, expiresAt, createdAt: nowIso() });
+  await writeDb(db);
+  response.setHeader("set-cookie", sessionCookieHeader(request, token));
+  sendJson(response, 200, { user: publicUser(user) });
+}
+
+async function handleLogout(request, response) {
+  const db = await readDbWithBootstrap();
+  const token = parseCookies(request)[sessionCookie];
+  db.sessions = db.sessions.filter((session) => session.token !== token);
+  await writeDb(db);
+  response.setHeader("set-cookie", sessionCookieHeader(request, "", 0));
+  sendJson(response, 200, { ok: true });
+}
+
+async function handleMe(request, response) {
+  const db = await readDbWithBootstrap();
+  const user = sessionUser(db, request);
+  if (!user) {
+    sendJson(response, 401, { error: "UNAUTHORIZED" });
+    return;
+  }
+  sendJson(response, 200, { user: publicUser(user) });
+}
+
 async function handleIdentify(request, response) {
   const payload = await readJson(request);
   const db = await readDb();
@@ -330,8 +486,14 @@ async function handleIdentify(request, response) {
 
 async function handleCreateClient(request, response) {
   const payload = await readJson(request);
-  const db = await readDb();
-  const reseller = findOrCreateReseller(db, payload.reseller);
+  const db = await readDbWithBootstrap();
+  const user = requireUser(db, request);
+  const reseller = user.role === resellerRole
+    ? db.resellers.find((item) => item.id === user.resellerId)
+    : findOrCreateReseller(db, payload.reseller);
+  if (!reseller) {
+    throw httpError(400, "Revenda do usuario nao encontrada.");
+  }
   const client = findOrCreateClient(db, reseller, payload.customer);
   const token = {
     id: randomUUID(),
@@ -352,6 +514,46 @@ async function handleCreateClient(request, response) {
     client,
     pairingToken: publicPairingToken(token)
   });
+}
+
+async function handleCreateReseller(request, response) {
+  const payload = await readJson(request);
+  const db = await readDbWithBootstrap();
+  const user = requireUser(db, request);
+  requireTronsoft(user);
+  const reseller = findOrCreateReseller(db, payload.reseller || payload);
+  await writeDb(db);
+  sendJson(response, 201, reseller);
+}
+
+async function handleCreateUser(request, response) {
+  const payload = await readJson(request);
+  const db = await readDbWithBootstrap();
+  const currentUser = requireUser(db, request);
+  requireTronsoft(currentUser);
+  const role = payload.role === resellerRole ? resellerRole : tronsoftRole;
+  const resellerId = role === resellerRole ? requireText(payload.resellerId, "resellerId") : null;
+  if (resellerId && !db.resellers.some((reseller) => reseller.id === resellerId)) {
+    throw httpError(400, "Revenda nao encontrada.");
+  }
+  const email = requireText(payload.email, "email").toLowerCase();
+  if (db.users.some((user) => user.email.toLowerCase() === email)) {
+    throw httpError(409, "Usuario ja cadastrado.");
+  }
+  const user = {
+    id: randomUUID(),
+    name: requireText(payload.name, "name"),
+    email,
+    passwordHash: hashPassword(requireText(payload.password, "password")),
+    role,
+    resellerId,
+    status: "active",
+    createdAt: nowIso(),
+    updatedAt: nowIso()
+  };
+  db.users.push(user);
+  await writeDb(db);
+  sendJson(response, 201, { user: publicUser(user) });
 }
 
 async function handlePairTronsoftos(request, response) {
@@ -452,6 +654,21 @@ async function handleApi(request, response, pathname) {
     return;
   }
 
+  if (request.method === "POST" && pathname === "/api/auth/login") {
+    await handleLogin(request, response);
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/auth/logout") {
+    await handleLogout(request, response);
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/auth/me") {
+    await handleMe(request, response);
+    return;
+  }
+
   if (request.method === "POST" && pathname === "/api/tronsoftos/identify") {
     await handleIdentify(request, response);
     return;
@@ -467,6 +684,16 @@ async function handleApi(request, response, pathname) {
     return;
   }
 
+  if (request.method === "POST" && pathname === "/api/admin/resellers") {
+    await handleCreateReseller(request, response);
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/admin/users") {
+    await handleCreateUser(request, response);
+    return;
+  }
+
   if (request.method === "POST" && pathname === "/api/tronsoftos/heartbeat") {
     await handleHeartbeat(request, response);
     return;
@@ -477,15 +704,38 @@ async function handleApi(request, response, pathname) {
     return;
   }
 
-  const db = await readDb();
+  const db = await readDbWithBootstrap();
+  const user = requireUser(db, request);
+  const url = new URL(request.url || "/", `http://${request.headers.host}`);
+  const resellerId = user.role === tronsoftRole ? url.searchParams.get("resellerId") || "" : "";
 
   if (request.method === "GET" && pathname === "/api/dashboard") {
-    sendJson(response, 200, dashboard(db));
+    const clients = scopedClients(db, user, resellerId);
+    const installations = scopedInstallations(db, user, resellerId);
+    const alerts = scopedAlerts(db, user, resellerId);
+    const resellers = user.role === tronsoftRole
+      ? (resellerId ? db.resellers.filter((reseller) => reseller.id === resellerId) : db.resellers)
+      : db.resellers.filter((reseller) => reseller.id === user.resellerId);
+    sendJson(response, 200, dashboard({ ...db, resellers, clients, installations, alerts }));
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/resellers") {
+    const resellers = user.role === tronsoftRole
+      ? db.resellers
+      : db.resellers.filter((reseller) => reseller.id === user.resellerId);
+    sendJson(response, 200, resellers);
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/users") {
+    requireTronsoft(user);
+    sendJson(response, 200, db.users.map(publicUser));
     return;
   }
 
   if (request.method === "GET" && pathname === "/api/clients") {
-    sendJson(response, 200, db.clients.map((client) => ({
+    sendJson(response, 200, scopedClients(db, user, resellerId).map((client) => ({
       ...client,
       reseller: db.resellers.find((reseller) => reseller.id === client.resellerId) || null,
       pairingTokens: db.pairingTokens.filter((token) => token.clientId === client.id).map(publicPairingToken)
@@ -494,12 +744,12 @@ async function handleApi(request, response, pathname) {
   }
 
   if (request.method === "GET" && pathname === "/api/installations") {
-    sendJson(response, 200, db.installations.map((installation) => publicInstallation(db, installation)));
+    sendJson(response, 200, scopedInstallations(db, user, resellerId).map((installation) => publicInstallation(db, installation)));
     return;
   }
 
   if (request.method === "GET" && pathname === "/api/alerts") {
-    sendJson(response, 200, db.alerts);
+    sendJson(response, 200, scopedAlerts(db, user, resellerId));
     return;
   }
 

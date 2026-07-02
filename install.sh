@@ -18,6 +18,8 @@ POSTGRES_DB="${CENTRAL_TRONSOFTOS_POSTGRES_DB:-central_tronsoftos}"
 POSTGRES_USER="${CENTRAL_TRONSOFTOS_POSTGRES_USER:-central_tronsoftos}"
 POSTGRES_PASSWORD="${CENTRAL_TRONSOFTOS_POSTGRES_PASSWORD:-}"
 DATABASE_URL="${CENTRAL_TRONSOFTOS_DATABASE_URL:-}"
+ADMIN_EMAIL="${CENTRAL_TRONSOFTOS_ADMIN_EMAIL:-admin@tronsoft.local}"
+ADMIN_PASSWORD="${CENTRAL_TRONSOFTOS_ADMIN_PASSWORD:-}"
 INSTALL_NODE="${CENTRAL_TRONSOFTOS_INSTALL_NODE:-ask}"
 NODE_MAJOR="${CENTRAL_TRONSOFTOS_NODE_MAJOR:-22}"
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -217,6 +219,21 @@ maybe_setup_postgres() {
   esac
 }
 
+ensure_admin_credentials() {
+  if [[ -n "$ADMIN_PASSWORD" ]]; then
+    return
+  fi
+
+  if [[ -t 0 ]]; then
+    ADMIN_PASSWORD="$(ask_secret "Senha inicial do admin TronSoft (${ADMIN_EMAIL}):")"
+  fi
+
+  if [[ -z "$ADMIN_PASSWORD" ]]; then
+    ADMIN_PASSWORD="$(random_password)"
+    warn "Senha admin gerada automaticamente. Guarde este valor: $ADMIN_PASSWORD"
+  fi
+}
+
 ensure_user() {
   if id "$APP_USER" >/dev/null 2>&1; then
     log "Usuario $APP_USER ja existe"
@@ -287,6 +304,8 @@ write_env() {
   if [[ -n "$DATABASE_URL" ]]; then
     upsert_env_line "DATABASE_URL" "$DATABASE_URL"
   fi
+  upsert_env_line "CENTRAL_ADMIN_EMAIL" "$ADMIN_EMAIL"
+  upsert_env_line "CENTRAL_ADMIN_PASSWORD" "$ADMIN_PASSWORD"
   as_root chmod 640 "$ENV_FILE"
   as_root chown "root:$APP_GROUP" "$ENV_FILE"
 }
@@ -476,6 +495,7 @@ main() {
   log "Instalador da Central TronSoftOS"
   ensure_node
   maybe_setup_postgres
+  ensure_admin_credentials
   ensure_user
   copy_app
   install_app_dependencies

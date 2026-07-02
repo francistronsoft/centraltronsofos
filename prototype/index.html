@@ -35,19 +35,19 @@
         </div>
 
         <nav class="nav">
-          <button class="nav-item active" type="button">Painel</button>
-          <button class="nav-item" type="button">Revendas</button>
-          <button class="nav-item" type="button">Clientes</button>
-          <button class="nav-item" type="button">Ambientes</button>
-          <button class="nav-item" type="button">Alertas</button>
-          <button class="nav-item" type="button">0auth</button>
+          <button class="nav-item active" type="button" data-view-target="dashboard">Painel</button>
+          <button class="nav-item" type="button" data-view-target="resellers">Revendas</button>
+          <button class="nav-item" type="button" data-view-target="clients">Clientes</button>
+          <button class="nav-item" type="button" data-view-target="installations">Ambientes</button>
+          <button class="nav-item" type="button" data-view-target="alerts">Alertas</button>
+          <button class="nav-item" type="button" data-view-target="oauth">0auth</button>
         </nav>
       </aside>
 
       <main class="app">
         <header class="topbar">
           <div>
-            <h1>Monitoramento geral</h1>
+            <h1 id="page-title">Monitoramento geral</h1>
             <p id="scope-label">Visao operacional das revendas e clientes TronSoftOS.</p>
           </div>
           <div class="actions">
@@ -58,26 +58,53 @@
           </div>
         </header>
 
-        <section class="metrics" aria-label="Indicadores">
-          <article class="metric">
-            <span>Revendas</span>
-            <strong id="metric-resellers">0</strong>
-          </article>
-          <article class="metric">
-            <span>Clientes</span>
-            <strong id="metric-clients">0</strong>
-          </article>
-          <article class="metric">
-            <span>Ambientes online</span>
-            <strong id="metric-online">0</strong>
-          </article>
-          <article class="metric warning">
-            <span>Alertas criticos</span>
-            <strong id="metric-alerts">0</strong>
-          </article>
+        <section class="view" data-view="dashboard">
+          <section class="metrics" aria-label="Indicadores">
+            <article class="metric">
+              <span>Revendas</span>
+              <strong id="metric-resellers">0</strong>
+            </article>
+            <article class="metric">
+              <span>Clientes</span>
+              <strong id="metric-clients">0</strong>
+            </article>
+            <article class="metric">
+              <span>Ambientes online</span>
+              <strong id="metric-online">0</strong>
+            </article>
+            <article class="metric warning">
+              <span>Alertas criticos</span>
+              <strong id="metric-alerts">0</strong>
+            </article>
+          </section>
+
+          <section class="dashboard-grid">
+            <section class="panel map-panel">
+              <div class="panel-header">
+                <div>
+                  <h2>Mapa de clientes</h2>
+                  <p>Distribuicao por cidade e UF dos TronSoftOS/clientes cadastrados.</p>
+                </div>
+              </div>
+              <div class="map-layout">
+                <div id="geo-map" class="geo-map" aria-label="Mapa operacional do Brasil"></div>
+                <div id="geo-list" class="geo-list"></div>
+              </div>
+            </section>
+
+            <aside class="panel side-panel">
+              <div class="panel-header compact">
+                <div>
+                  <h2>Eventos recentes</h2>
+                  <p>Alertas e rotinas da Central.</p>
+                </div>
+              </div>
+              <div id="auth-events" class="event-list"></div>
+            </aside>
+          </section>
         </section>
 
-        <section class="register-grid">
+        <section class="view" data-view="resellers" hidden>
           <section id="reseller-panel" class="panel register-panel">
             <div class="panel-header">
               <div>
@@ -93,7 +120,9 @@
             <div id="reseller-result" class="pairing-result" hidden></div>
             <div id="resellers-list" class="compact-list"></div>
           </section>
+        </section>
 
+        <section class="view" data-view="clients" hidden>
           <section class="panel register-panel">
             <div class="panel-header">
               <div>
@@ -113,22 +142,7 @@
             </form>
             <div id="pairing-result" class="pairing-result" hidden></div>
           </section>
-        </section>
 
-        <section class="panel map-panel">
-          <div class="panel-header">
-            <div>
-              <h2>Mapa de clientes</h2>
-              <p>Distribuicao por cidade e UF dos TronSoftOS/clientes cadastrados.</p>
-            </div>
-          </div>
-          <div class="map-layout">
-            <div id="geo-map" class="geo-map" aria-label="Mapa operacional do Brasil"></div>
-            <div id="geo-list" class="geo-list"></div>
-          </div>
-        </section>
-
-        <section class="work-area">
           <div class="panel">
             <div class="panel-header">
               <div>
@@ -153,16 +167,39 @@
               </table>
             </div>
           </div>
+        </section>
 
-          <aside class="panel side-panel">
+        <section class="view" data-view="installations" hidden>
+          <div class="panel">
             <div class="panel-header compact">
               <div>
-                <h2>Eventos recentes</h2>
-                <p>Alertas e rotinas da Central.</p>
+                <h2>Ambientes</h2>
+                <p>Os ambientes pareados serao organizados aqui.</p>
               </div>
             </div>
-            <div id="auth-events" class="event-list"></div>
-          </aside>
+          </div>
+        </section>
+
+        <section class="view" data-view="alerts" hidden>
+          <div class="panel">
+            <div class="panel-header compact">
+              <div>
+                <h2>Alertas</h2>
+                <p>A fila completa de alertas sera organizada aqui.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" data-view="oauth" hidden>
+          <div class="panel">
+            <div class="panel-header compact">
+              <div>
+                <h2>0auth</h2>
+                <p>Worker e rotinas do 0auth ficarao nesta area.</p>
+              </div>
+            </div>
+          </div>
         </section>
       </main>
     </div>

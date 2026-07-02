@@ -239,24 +239,21 @@ p {
   color: var(--danger);
 }
 
-.work-area {
+.dashboard-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 330px;
   gap: 18px;
   align-items: start;
 }
 
-.register-grid {
-  display: grid;
-  grid-template-columns: 380px minmax(0, 1fr);
-  gap: 18px;
-  margin-bottom: 18px;
-}
-
 .panel {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
+}
+
+.view > .panel + .panel {
+  margin-top: 18px;
 }
 
 .panel-header {
@@ -347,7 +344,7 @@ input[type="search"] {
 }
 
 .map-panel {
-  margin-bottom: 18px;
+  min-width: 0;
 }
 
 .map-layout {
@@ -535,8 +532,7 @@ tr:last-child td {
   }
 
   .metrics,
-  .work-area,
-  .register-grid,
+  .dashboard-grid,
   .map-layout,
   .client-form {
     grid-template-columns: 1fr;

@@ -9,6 +9,16 @@ let currentUser = null;
 let currentClients = [];
 let currentAuthEvents = [];
 let currentResellers = [];
+let activeView = "dashboard";
+
+const viewTitles = {
+  dashboard: "Monitoramento geral",
+  resellers: "Revendas",
+  clients: "Clientes",
+  installations: "Ambientes",
+  alerts: "Alertas",
+  oauth: "0auth"
+};
 
 const ufCoordinates = {
   AC: [18, 45],
@@ -92,6 +102,21 @@ function showLogin() {
 function showApp() {
   document.querySelector("#login-view").hidden = true;
   document.querySelector("#app-shell").hidden = false;
+  showView(activeView);
+}
+
+function showView(view) {
+  const tronsoft = currentUser?.role === "tronsoft_admin";
+  activeView = !tronsoft && view === "resellers" ? "clients" : view;
+
+  document.querySelectorAll("[data-view]").forEach((section) => {
+    section.hidden = section.dataset.view !== activeView;
+  });
+  document.querySelectorAll("[data-view-target]").forEach((button) => {
+    const isActive = button.dataset.viewTarget === activeView;
+    button.classList.toggle("active", isActive);
+  });
+  document.querySelector("#page-title").textContent = viewTitles[activeView] || "Central";
 }
 
 async function loadSession() {
@@ -148,6 +173,7 @@ async function configureScopeControls() {
   const resellerNameInput = document.querySelector("#reseller-name-input");
   const resellerDocumentInput = document.querySelector("#reseller-document-input");
   const resellerPanel = document.querySelector("#reseller-panel");
+  const resellersNav = document.querySelector('[data-view-target="resellers"]');
 
   filter.innerHTML = `<option value="">Todas as revendas</option>${currentResellers
     .map((reseller) => `<option value="${reseller.id}">${escapeHtml(reseller.name)}</option>`)
@@ -159,6 +185,7 @@ async function configureScopeControls() {
   const tronsoft = currentUser.role === "tronsoft_admin";
   filter.hidden = !tronsoft;
   resellerPanel.hidden = !tronsoft;
+  resellersNav.hidden = !tronsoft;
   clientResellerSelect.hidden = !tronsoft;
   resellerNameInput.hidden = tronsoft;
   resellerDocumentInput.hidden = tronsoft;
@@ -171,6 +198,7 @@ async function configureScopeControls() {
   }
 
   renderResellers();
+  showView(activeView);
 }
 
 async function loadCentralData() {
@@ -424,6 +452,11 @@ async function createReseller(event) {
 document.querySelector("#login-form").addEventListener("submit", login);
 document.querySelector("#logout-button").addEventListener("click", logout);
 document.querySelector("#refresh-button").addEventListener("click", loadCentralData);
+document.querySelectorAll("[data-view-target]").forEach((button) => {
+  button.addEventListener("click", () => {
+    showView(button.dataset.viewTarget);
+  });
+});
 document.querySelector("#reseller-filter").addEventListener("change", loadCentralData);
 document.querySelector("#client-filter").addEventListener("input", (event) => {
   renderClients(event.target.value);

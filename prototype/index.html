@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Central TronSoftOS</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <aside class="sidebar" aria-label="Navegacao principal">
+      <div class="brand">
+        <div class="brand-mark">T</div>
+        <div>
+          <strong>Central</strong>
+          <span>TronSoftOS</span>
+        </div>
+      </div>
+
+      <nav class="nav">
+        <button class="nav-item active" type="button">Painel</button>
+        <button class="nav-item" type="button">Revendas</button>
+        <button class="nav-item" type="button">Clientes</button>
+        <button class="nav-item" type="button">Ambientes</button>
+        <button class="nav-item" type="button">Alertas</button>
+        <button class="nav-item" type="button">0auth</button>
+      </nav>
+    </aside>
+
+    <main class="app">
+      <header class="topbar">
+        <div>
+          <h1>Monitoramento geral</h1>
+          <p>Visao operacional das revendas e clientes TronSoftOS.</p>
+        </div>
+        <div class="actions">
+          <button type="button" class="icon-button" aria-label="Atualizar dados" title="Atualizar dados">↻</button>
+          <button type="button" class="primary-button">Novo cliente</button>
+        </div>
+      </header>
+
+      <section class="metrics" aria-label="Indicadores">
+        <article class="metric">
+          <span>Revendas</span>
+          <strong id="metric-resellers">0</strong>
+        </article>
+        <article class="metric">
+          <span>Clientes</span>
+          <strong id="metric-clients">0</strong>
+        </article>
+        <article class="metric">
+          <span>Ambientes online</span>
+          <strong id="metric-online">0</strong>
+        </article>
+        <article class="metric warning">
+          <span>Alertas criticos</span>
+          <strong id="metric-alerts">0</strong>
+        </article>
+      </section>
+
+      <section class="panel register-panel">
+        <div class="panel-header">
+          <div>
+            <h2>Cadastrar cliente</h2>
+            <p>Gere o token que o tecnico ira informar no TronSoftOS.</p>
+          </div>
+        </div>
+        <form id="client-form" class="client-form">
+          <input name="resellerName" type="text" placeholder="Revenda" required>
+          <input name="resellerDocument" type="text" placeholder="Documento da revenda">
+          <input name="customerName" type="text" placeholder="Cliente" required>
+          <input name="customerDocument" type="text" placeholder="Documento do cliente">
+          <input name="customerCity" type="text" placeholder="Cidade">
+          <input name="customerState" type="text" placeholder="UF">
+          <button class="primary-button" type="submit">Gerar token</button>
+        </form>
+        <div id="pairing-result" class="pairing-result" hidden></div>
+      </section>
+
+      <section class="work-area">
+        <div class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Clientes monitorados</h2>
+              <p>Carteira operacional por revenda.</p>
+            </div>
+            <input id="client-filter" type="search" placeholder="Filtrar cliente">
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Cliente</th>
+                  <th>Revenda</th>
+                  <th>Ambiente</th>
+                  <th>TronSoftOS / Banco</th>
+                  <th>Status</th>
+                  <th>Ultima comunicacao</th>
+                </tr>
+              </thead>
+              <tbody id="clients-table"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <aside class="panel side-panel">
+          <div class="panel-header compact">
+            <div>
+              <h2>Fila 0auth</h2>
+              <p>Rotinas recentes do worker.</p>
+            </div>
+          </div>
+          <div id="auth-events" class="event-list"></div>
+        </aside>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>

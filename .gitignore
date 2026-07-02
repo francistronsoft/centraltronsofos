@@ -1,0 +1,28 @@
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Logs e temporarios
+*.log
+tmp/
+temp/
+data/*.json
+!data/.gitkeep
+
+# Dependencias futuras
+node_modules/
+vendor/
+
+# Builds futuros
+dist/
+build/
+coverage/
+
+# Ambiente
+.env
+.env.*
+!.env.example

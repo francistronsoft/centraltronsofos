@@ -55,7 +55,6 @@
             <span id="user-badge" class="user-badge"></span>
             <button type="button" class="icon-button" id="refresh-button" aria-label="Atualizar dados" title="Atualizar dados">R</button>
             <button type="button" class="icon-button" id="logout-button" aria-label="Sair" title="Sair">S</button>
-            <button type="button" class="primary-button">Novo cliente</button>
           </div>
         </header>
 
@@ -78,24 +77,55 @@
           </article>
         </section>
 
-        <section class="panel register-panel">
+        <section class="register-grid">
+          <section id="reseller-panel" class="panel register-panel">
+            <div class="panel-header">
+              <div>
+                <h2>Cadastrar revenda</h2>
+                <p>Crie a revenda antes de vincular clientes a ela.</p>
+              </div>
+            </div>
+            <form id="reseller-form" class="reseller-form">
+              <input name="name" type="text" placeholder="Revenda" required>
+              <input name="document" type="text" placeholder="Documento">
+              <button class="primary-button" type="submit">Salvar revenda</button>
+            </form>
+            <div id="reseller-result" class="pairing-result" hidden></div>
+            <div id="resellers-list" class="compact-list"></div>
+          </section>
+
+          <section class="panel register-panel">
+            <div class="panel-header">
+              <div>
+                <h2>Cadastrar cliente</h2>
+                <p>Gere o token que o tecnico ira informar no TronSoftOS.</p>
+              </div>
+            </div>
+            <form id="client-form" class="client-form">
+              <select name="resellerId" id="client-reseller-select" hidden></select>
+              <input name="resellerName" id="reseller-name-input" type="text" placeholder="Revenda" required>
+              <input name="resellerDocument" id="reseller-document-input" type="text" placeholder="Documento da revenda">
+              <input name="customerName" type="text" placeholder="Cliente" required>
+              <input name="customerDocument" type="text" placeholder="Documento do cliente">
+              <input name="customerCity" type="text" placeholder="Cidade">
+              <input name="customerState" type="text" placeholder="UF">
+              <button class="primary-button" type="submit">Gerar token</button>
+            </form>
+            <div id="pairing-result" class="pairing-result" hidden></div>
+          </section>
+        </section>
+
+        <section class="panel map-panel">
           <div class="panel-header">
             <div>
-              <h2>Cadastrar cliente</h2>
-              <p>Gere o token que o tecnico ira informar no TronSoftOS.</p>
+              <h2>Mapa de clientes</h2>
+              <p>Distribuicao por cidade e UF dos TronSoftOS/clientes cadastrados.</p>
             </div>
           </div>
-          <form id="client-form" class="client-form">
-            <select name="resellerId" id="client-reseller-select" hidden></select>
-            <input name="resellerName" id="reseller-name-input" type="text" placeholder="Revenda" required>
-            <input name="resellerDocument" id="reseller-document-input" type="text" placeholder="Documento da revenda">
-            <input name="customerName" type="text" placeholder="Cliente" required>
-            <input name="customerDocument" type="text" placeholder="Documento do cliente">
-            <input name="customerCity" type="text" placeholder="Cidade">
-            <input name="customerState" type="text" placeholder="UF">
-            <button class="primary-button" type="submit">Gerar token</button>
-          </form>
-          <div id="pairing-result" class="pairing-result" hidden></div>
+          <div class="map-layout">
+            <div id="geo-map" class="geo-map" aria-label="Mapa operacional do Brasil"></div>
+            <div id="geo-list" class="geo-list"></div>
+          </div>
         </section>
 
         <section class="work-area">

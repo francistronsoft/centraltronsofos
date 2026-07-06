@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Central TronSoftOS</title>
-    <link rel="stylesheet" href="styles.css?v=20260706-maintenance">
+    <link rel="stylesheet" href="styles.css?v=20260706-dashboard-alerts">
   </head>
   <body>
     <main id="login-view" class="login-view">
@@ -77,6 +77,31 @@
               <span>Alertas criticos</span>
               <strong id="metric-alerts">0</strong>
             </article>
+          </section>
+
+          <section class="monitor-panel">
+            <div class="monitor-header">
+              <div>
+                <h2>Clientes monitorados</h2>
+                <p>Situacao operacional dos TronSoftOS pareados com a Central.</p>
+              </div>
+              <div class="segmented" aria-label="Filtro de status">
+                <button class="segment active" type="button" data-monitor-filter="all">Todos</button>
+                <button class="segment" type="button" data-monitor-filter="warning">Atencao</button>
+                <button class="segment" type="button" data-monitor-filter="offline">Offline</button>
+              </div>
+            </div>
+            <div class="monitor-table">
+              <div class="monitor-head">
+                <span>Cliente</span>
+                <span>Revenda</span>
+                <span>Status</span>
+                <span>Disco</span>
+                <span>Backup</span>
+                <span>Acesso</span>
+              </div>
+              <div id="dashboard-clients-list" class="monitor-list"></div>
+            </div>
           </section>
 
           <section class="dashboard-grid">
@@ -185,12 +210,19 @@
 
         <section class="view" data-view="alerts" hidden>
           <div class="panel">
-            <div class="panel-header compact">
+            <div class="panel-header">
               <div>
                 <h2>Alertas</h2>
-                <p>A fila completa de alertas sera organizada aqui.</p>
+                <p>Ocorrencias recebidas dos TronSoftOS monitorados.</p>
               </div>
+              <select id="alert-filter">
+                <option value="">Todos</option>
+                <option value="critical">Criticos</option>
+                <option value="warning">Atencao</option>
+                <option value="info">Informativos</option>
+              </select>
             </div>
+            <div id="alerts-list" class="alerts-list"></div>
           </div>
         </section>
 
@@ -229,6 +261,6 @@
       </main>
     </div>
 
-    <script src="app.js?v=20260706-maintenance-permission"></script>
+    <script src="app.js?v=20260706-dashboard-alerts"></script>
   </body>
 </html>

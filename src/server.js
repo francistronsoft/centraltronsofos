@@ -392,6 +392,9 @@ function upsertInstallation(db, client, payload) {
       os: payload.host?.os || "",
       ip: payload.host?.ip || ""
     },
+    cluster: payload.cluster || {},
+    backups: payload.backups || {},
+    metrics: payload.metrics || payload.systemMetrics || {},
     lastSeenAt: nowIso(),
     createdAt: existing?.createdAt || nowIso(),
     updatedAt: nowIso()
@@ -434,6 +437,9 @@ function upsertInstallationForClient(db, client, payload) {
       os: payload.host?.os || "",
       ip: payload.host?.ip || ""
     },
+    cluster: payload.cluster || {},
+    backups: payload.backups || {},
+    metrics: payload.metrics || payload.systemMetrics || {},
     lastSeenAt: nowIso(),
     createdAt: existing?.createdAt || nowIso(),
     updatedAt: nowIso()
@@ -501,6 +507,9 @@ function publicInstallation(db, installation) {
     tronsoftos: installation.tronsoftos,
     database: installation.database,
     host: installation.host,
+    cluster: installation.cluster || {},
+    backups: installation.backups || {},
+    metrics: installation.metrics || {},
     client,
     reseller
   };
@@ -926,6 +935,9 @@ async function handleHeartbeat(request, response) {
   installation.tronsoftos = { ...installation.tronsoftos, ...payload.tronsoftos };
   installation.database = { ...installation.database, ...payload.database };
   installation.host = { ...installation.host, ...payload.host };
+  installation.cluster = { ...(installation.cluster || {}), ...(payload.cluster || {}) };
+  installation.backups = { ...(installation.backups || {}), ...(payload.backups || {}) };
+  installation.metrics = { ...(installation.metrics || {}), ...(payload.metrics || payload.systemMetrics || {}) };
   installation.lastSeenAt = nowIso();
   installation.updatedAt = nowIso();
 

@@ -7,10 +7,13 @@ const statusLabels = {
 
 let currentUser = null;
 let currentClients = [];
+let currentInstallations = [];
+let currentAlerts = [];
 let currentAuthEvents = [];
 let currentResellers = [];
 let currentOAuthSummary = null;
 let activeView = "dashboard";
+let monitorFilter = "all";
 
 const viewTitles = {
   dashboard: "Monitoramento geral",
@@ -28,6 +31,47 @@ const directTronsoftOption = {
   document: "TRONSOFT-DIRETO",
   directTronsoft: true
 };
+
+const severityLabels = {
+  critical: "Critico",
+  warning: "Atencao",
+  info: "Info"
+};
+
+function initials(value) {
+  return String(value || "?")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+}
+
+function formatRelativeTime(value) {
+  if (!value) return "-";
+  const diffMs = Date.now() - new Date(value).getTime();
+  if (!Number.isFinite(diffMs)) return "-";
+  const minutes = Math.max(0, Math.round(diffMs / 60000));
+  if (minutes < 1) return "agora";
+  if (minutes < 60) return `ha ${minutes} min`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `ha ${hours} h`;
+  return new Date(value).toLocaleDateString("pt-BR");
+}
+
+function numberFromPaths(source, paths) {
+  for (const path of paths) {
+    const value = path.split(".").reduce((acc, key) => acc?.[key], source);
+    const number = Number(value);
+    if (Number.isFinite(number)) return Math.round(number);
+  }
+  return null;
+}
+
+function latestOpenAlertForClient(clientId) {
+  return currentAlerts.find((alert) => alert.clientId === clientId && alert.status !== "resolved");
+}
 
 const ufCoordinates = {
   AC: [18, 45],
@@ -228,6 +272,8 @@ async function loadCentralData() {
     api(`/api/oauth/google/summary${querySuffix()}`)
   ]);
   currentOAuthSummary = oauthSummary;
+  currentInstallations = installations;
+  currentAlerts = alerts;
 
   const installationsByClient = new Map();
   installations.forEach((installation) => {
@@ -251,6 +297,10 @@ async function loadCentralData() {
         database: "-",
         status: "unknown",
         lastSeen: "-",
+        lastSeenAt: null,
+        diskPercent: null,
+        backup: { label: "--", tone: "unknown", detail: "sem dados" },
+        alert: latestOpenAlertForClient(client.id),
         pairingToken: latestToken?.token || ""
       }];
     }
@@ -272,6 +322,10 @@ async function loadCentralData() {
         .join(" / ") || "-",
       status: installation.status,
       lastSeen: installation.lastSeenAt ? new Date(installation.lastSeenAt).toLocaleString("pt-BR") : "-",
+      lastSeenAt: installation.lastSeenAt || null,
+      diskPercent: diskPercent(installation),
+      backup: backupSummary(installation),
+      alert: latestOpenAlertForClient(client.id),
       pairingToken: ""
     }));
   });
@@ -283,8 +337,10 @@ async function loadCentralData() {
 
   renderMetrics(dashboard);
   renderClients(document.querySelector("#client-filter").value);
+  renderDashboardClients();
   renderGeoMap();
   renderAuthEvents();
+  renderAlerts();
   renderOAuthSummary();
 }
 
@@ -293,6 +349,44 @@ function renderMetrics(dashboard) {
   document.querySelector("#metric-clients").textContent = dashboard.clients;
   document.querySelector("#metric-online").textContent = dashboard.online;
   document.querySelector("#metric-alerts").textContent = dashboard.criticalAlerts;
+}
+
+function diskPercent(installation) {
+  return numberFromPaths(installation, [
+    "backups.disk.percentUsed",
+    "backups.disk.usedPercent",
+    "metrics.diskUsedPercent",
+    "metrics.host.diskUsedPercent",
+    "host.diskUsedPercent",
+    "database.diskPercent"
+  ]);
+}
+
+function backupSummary(installation) {
+  const backups = installation?.backups || {};
+  const latest = backups.latestBackupAt
+    || backups.latestUploadedAt
+    || backups.latestFile?.modifiedAt
+    || backups.recentFiles?.[0]?.modifiedAt
+    || backups.receiver?.latestBackup?.modifiedAt
+    || null;
+  if (!latest) {
+    return { label: "--", tone: "unknown", detail: "sem dados" };
+  }
+
+  const minutes = Math.max(0, Math.round((Date.now() - new Date(latest).getTime()) / 60000));
+  if (!Number.isFinite(minutes)) return { label: "--", tone: "unknown", detail: "sem dados" };
+  if (minutes <= 360) return { label: `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")} OK`, tone: "online", detail: formatRelativeTime(latest) };
+  return { label: "Atrasado", tone: "warning", detail: formatRelativeTime(latest) };
+}
+
+function monitorStatus(client) {
+  if (client.status === "offline") return "offline";
+  const alert = latestOpenAlertForClient(client.id);
+  if (alert?.severity === "critical") return "offline";
+  if (alert || client.status === "warning") return "warning";
+  if (client.status === "online") return "online";
+  return "unknown";
 }
 
 function renderClients(filter = "") {
@@ -322,6 +416,89 @@ function renderClients(filter = "") {
         <td colspan="6" class="empty-cell">Nenhum cliente encontrado neste escopo.</td>
       </tr>
     `;
+}
+
+function renderDashboardClients() {
+  const list = document.querySelector("#dashboard-clients-list");
+  if (!list) return;
+  const visibleClients = currentClients.filter((client) => {
+    const status = monitorStatus(client);
+    if (monitorFilter === "warning") return status === "warning";
+    if (monitorFilter === "offline") return status === "offline";
+    return true;
+  });
+
+  list.innerHTML = visibleClients
+    .map((client) => {
+      const status = monitorStatus(client);
+      const disk = client.diskPercent;
+      const diskTone = disk === null ? "unknown" : disk >= 90 ? "offline" : disk >= 75 ? "warning" : "online";
+      const detail = client.alert?.message || client.alert?.title || (client.lastSeenAt ? `Ultimo heartbeat ${formatRelativeTime(client.lastSeenAt)}` : "Aguardando heartbeat");
+      return `
+        <article class="monitor-row">
+          <div class="monitor-client">
+            <span class="client-avatar">${escapeHtml(initials(client.name))}</span>
+            <div>
+              <strong>${escapeHtml(client.name)}</strong>
+              <span>${escapeHtml(detail)}</span>
+            </div>
+          </div>
+          <div>${escapeHtml(client.reseller)}</div>
+          <div><span class="status ${escapeHtml(status)}">${escapeHtml(statusLabels[status] || status)}</span></div>
+          <div class="disk-cell">
+            <strong>${disk === null ? "--" : `${disk}%`}</strong>
+            <span class="disk-bar"><span class="${escapeHtml(diskTone)}" style="width:${disk === null ? 0 : Math.min(100, disk)}%"></span></span>
+            ${disk === null ? `<small>sem dados</small>` : ""}
+          </div>
+          <div><span class="backup-pill ${escapeHtml(client.backup.tone)}">${escapeHtml(client.backup.label)}</span></div>
+          <div><button class="access-button" type="button" title="Acesso operacional ainda sera integrado">Acessar</button></div>
+        </article>
+      `;
+    })
+    .join("") || `<div class="empty-monitor">Nenhum cliente neste filtro.</div>`;
+}
+
+function alertContext(alert) {
+  const installation = currentInstallations.find((item) => item.installationId === alert.installationId);
+  const client = currentClients.find((item) => item.id === alert.clientId);
+  return {
+    clientName: client?.name || installation?.client?.name || "Cliente nao identificado",
+    resellerName: client?.reseller || installation?.reseller?.name || "Sem revenda",
+    environment: installation?.name || alert.installationId || "-"
+  };
+}
+
+function renderAlerts() {
+  const list = document.querySelector("#alerts-list");
+  const filter = document.querySelector("#alert-filter")?.value || "";
+  if (!list) return;
+  const visibleAlerts = currentAlerts
+    .filter((alert) => !filter || alert.severity === filter)
+    .slice()
+    .sort((a, b) => new Date(b.openedAt || 0) - new Date(a.openedAt || 0));
+
+  list.innerHTML = visibleAlerts
+    .map((alert) => {
+      const context = alertContext(alert);
+      return `
+        <article class="alert-row ${escapeHtml(alert.severity)}">
+          <div>
+            <span class="alert-severity ${escapeHtml(alert.severity)}">${escapeHtml(severityLabels[alert.severity] || alert.severity)}</span>
+            <strong>${escapeHtml(alert.title || alert.code || "Alerta")}</strong>
+            <p>${escapeHtml(alert.message || "Sem detalhes")}</p>
+          </div>
+          <div>
+            <span>${escapeHtml(context.clientName)}</span>
+            <small>${escapeHtml(context.resellerName)} / ${escapeHtml(context.environment)}</small>
+          </div>
+          <div>
+            <span>${escapeHtml(alert.status || "open")}</span>
+            <small>${escapeHtml(formatRelativeTime(alert.openedAt))}</small>
+          </div>
+        </article>
+      `;
+    })
+    .join("") || `<div class="empty-monitor">Nenhum alerta encontrado.</div>`;
 }
 
 function renderResellers() {
@@ -535,7 +712,17 @@ document.querySelectorAll("[data-view-target]").forEach((button) => {
     showView(button.dataset.viewTarget);
   });
 });
+document.querySelectorAll("[data-monitor-filter]").forEach((button) => {
+  button.addEventListener("click", () => {
+    monitorFilter = button.dataset.monitorFilter;
+    document.querySelectorAll("[data-monitor-filter]").forEach((item) => {
+      item.classList.toggle("active", item === button);
+    });
+    renderDashboardClients();
+  });
+});
 document.querySelector("#reseller-filter").addEventListener("change", loadCentralData);
+document.querySelector("#alert-filter").addEventListener("change", renderAlerts);
 document.querySelector("#client-filter").addEventListener("input", (event) => {
   renderClients(event.target.value);
 });

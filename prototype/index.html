@@ -4,13 +4,14 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Central TronSoftOS</title>
-    <link rel="stylesheet" href="styles.css?v=20260706-maintenance-update">
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="styles.css?v=20260706-ui-polish">
   </head>
   <body>
     <main id="login-view" class="login-view">
       <form id="login-form" class="login-card">
         <div class="brand login-brand">
-          <div class="brand-mark">T</div>
+          <img class="brand-logo" src="logo.svg" alt="" aria-hidden="true">
           <div>
             <strong>Central</strong>
             <span>TronSoftOS</span>
@@ -27,7 +28,7 @@
     <div id="app-shell" class="app-shell" hidden>
       <aside class="sidebar" aria-label="Navegacao principal">
         <div class="brand">
-          <div class="brand-mark">T</div>
+          <img class="brand-logo" src="logo.svg" alt="" aria-hidden="true">
           <div>
             <strong>Central</strong>
             <span>TronSoftOS</span>
@@ -49,13 +50,14 @@
         <header class="topbar">
           <div>
             <h1 id="page-title">Monitoramento geral</h1>
-            <p id="scope-label">Visao operacional das revendas e clientes TronSoftOS.</p>
+            <p id="scope-label" hidden></p>
           </div>
           <div class="actions">
             <select id="reseller-filter" hidden></select>
             <span id="user-badge" class="user-badge"></span>
-            <button type="button" class="icon-button" id="refresh-button" aria-label="Atualizar dados" title="Atualizar dados">R</button>
-            <button type="button" class="icon-button" id="logout-button" aria-label="Sair" title="Sair">S</button>
+            <button type="button" class="icon-button" id="theme-toggle-button" aria-label="Alternar tema" title="Alternar tema"></button>
+            <button type="button" class="icon-button" id="refresh-button" aria-label="Atualizar dados" title="Atualizar dados"></button>
+            <button type="button" class="icon-button" id="logout-button" aria-label="Sair" title="Sair"></button>
           </div>
         </header>
 
@@ -258,6 +260,6 @@
       </main>
     </div>
 
-    <script src="app.js?v=20260706-maintenance-update"></script>
+    <script src="app.js?v=20260706-ui-polish"></script>
   </body>
 </html>

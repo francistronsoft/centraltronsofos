@@ -18,6 +18,7 @@ let clientPage = 1;
 let maintenanceJobId = null;
 let maintenancePollTimer = null;
 const clientsPageSize = 10;
+const themeKey = "central-theme";
 
 const viewTitles = {
   dashboard: "Monitoramento geral",
@@ -52,6 +53,26 @@ function initials(value) {
     .toUpperCase();
 }
 
+function svgIcon(path) {
+  return `<svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
+}
+
+function iconRefresh() {
+  return svgIcon('<path d="M21 12a9 9 0 0 0-15-6.7L3 8"></path><path d="M3 3v5h5"></path><path d="M3 12a9 9 0 0 0 15 6.7L21 16"></path><path d="M16 16h5v5"></path>');
+}
+
+function iconLogout() {
+  return svgIcon('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="M16 17l5-5-5-5"></path><path d="M21 12H9"></path>');
+}
+
+function iconMoon() {
+  return svgIcon('<path d="M12 3a6 6 0 0 0 9 7.4A9 9 0 1 1 12 3z"></path>');
+}
+
+function iconSun() {
+  return svgIcon('<circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="M4.93 4.93l1.41 1.41"></path><path d="M17.66 17.66l1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="M6.34 17.66l-1.41 1.41"></path><path d="M19.07 4.93l-1.41 1.41"></path>');
+}
+
 function formatRelativeTime(value) {
   if (!value) return "-";
   const diffMs = Date.now() - new Date(value).getTime();
@@ -62,6 +83,14 @@ function formatRelativeTime(value) {
   const hours = Math.round(minutes / 60);
   if (hours < 24) return `ha ${hours} h`;
   return new Date(value).toLocaleDateString("pt-BR");
+}
+
+function backupAgeLabel(minutes) {
+  if (minutes < 60) return `ha ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (rest === 0) return `ha ${hours} h`;
+  return `ha ${hours} h ${rest} min`;
 }
 
 function numberFromPaths(source, paths) {
@@ -386,8 +415,8 @@ function backupSummary(installation) {
 
   const minutes = Math.max(0, Math.round((Date.now() - new Date(latest).getTime()) / 60000));
   if (!Number.isFinite(minutes)) return { label: "--", tone: "unknown", detail: "sem dados" };
-  if (minutes <= 360) return { label: `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")} OK`, tone: "online", detail: formatRelativeTime(latest) };
-  return { label: "Atrasado", tone: "warning", detail: formatRelativeTime(latest) };
+  if (minutes <= 360) return { label: `Backup ${backupAgeLabel(minutes)}`, tone: "online", detail: formatRelativeTime(latest) };
+  return { label: `Atrasado ${backupAgeLabel(minutes)}`, tone: "warning", detail: formatRelativeTime(latest) };
 }
 
 function monitorStatus(client) {
@@ -574,15 +603,26 @@ function renderGeoMap() {
   });
 
   const points = [...groups.values()].sort((a, b) => b.count - a.count || a.state.localeCompare(b.state));
+  const stateTotals = new Map();
+  points.forEach((point) => {
+    const current = stateTotals.get(point.state) || { count: 0, online: 0, warning: 0 };
+    current.count += point.count;
+    current.online += point.online;
+    current.warning += point.warning;
+    stateTotals.set(point.state, current);
+  });
+  const states = ["AC", "AM", "RR", "RO", "PA", "AP", "TO", "MA", "PI", "CE", "RN", "PB", "PE", "AL", "SE", "BA", "MT", "MS", "GO", "DF", "MG", "ES", "RJ", "SP", "PR", "SC", "RS"];
   map.innerHTML = `
-    <div class="map-shape"></div>
-    ${points.map((point, index) => {
-      const [baseX, baseY] = ufCoordinates[point.state];
-      const offset = (index % 5) - 2;
-      const x = Math.max(8, Math.min(92, baseX + offset * 1.5));
-      const y = Math.max(8, Math.min(92, baseY + offset));
-      return `<button class="map-pin" type="button" style="left:${x}%;top:${y}%;" title="${escapeHtml(point.city)} / ${escapeHtml(point.state)} - ${point.count} cliente(s)">${point.count}</button>`;
-    }).join("")}
+    <div class="uf-map">
+      ${states.map((state) => {
+        const total = stateTotals.get(state);
+        const tone = !total ? "empty" : total.warning > 0 ? "warning" : "online";
+        return `<button class="uf-tile ${tone}" type="button" title="${state}: ${total?.count || 0} cliente(s)">
+          <strong>${state}</strong>
+          <span>${total?.count || ""}</span>
+        </button>`;
+      }).join("")}
+    </div>
   `;
 
   list.innerHTML = points
@@ -593,6 +633,22 @@ function renderGeoMap() {
       </article>
     `)
     .join("") || `<p class="empty-note">Cadastre clientes com cidade e UF para popular o mapa.</p>`;
+}
+
+function applyTheme(theme) {
+  const resolved = theme === "dark" ? "dark" : "light";
+  document.documentElement.dataset.theme = resolved;
+  localStorage.setItem(themeKey, resolved);
+  const button = document.querySelector("#theme-toggle-button");
+  if (button) {
+    button.innerHTML = resolved === "dark" ? iconSun() : iconMoon();
+    button.title = resolved === "dark" ? "Usar tema claro" : "Usar tema escuro";
+    button.setAttribute("aria-label", button.title);
+  }
+}
+
+function toggleTheme() {
+  applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
 }
 
 function renderOAuthSummary() {
@@ -795,6 +851,7 @@ async function createReseller(event) {
 document.querySelector("#login-form").addEventListener("submit", login);
 document.querySelector("#logout-button").addEventListener("click", logout);
 document.querySelector("#refresh-button").addEventListener("click", loadCentralData);
+document.querySelector("#theme-toggle-button").addEventListener("click", toggleTheme);
 document.querySelectorAll("[data-view-target]").forEach((button) => {
   button.addEventListener("click", () => {
     showView(button.dataset.viewTarget);
@@ -819,4 +876,7 @@ document.querySelector("#client-form").addEventListener("submit", createClient);
 document.querySelector("#reseller-form").addEventListener("submit", createReseller);
 document.querySelector("#maintenance-update-button").addEventListener("click", requestMaintenanceUpdate);
 
+document.querySelector("#refresh-button").innerHTML = iconRefresh();
+document.querySelector("#logout-button").innerHTML = iconLogout();
+applyTheme(localStorage.getItem(themeKey) || "light");
 loadSession();

@@ -116,7 +116,8 @@ function showApp() {
 
 function showView(view) {
   const tronsoft = currentUser?.role === "tronsoft_admin";
-  activeView = !tronsoft && view === "resellers" ? "clients" : view;
+  const restrictedViews = new Set(["resellers", "maintenance"]);
+  activeView = !tronsoft && restrictedViews.has(view) ? "clients" : view;
 
   document.querySelectorAll("[data-view]").forEach((section) => {
     section.hidden = section.dataset.view !== activeView;
@@ -183,6 +184,7 @@ async function configureScopeControls() {
   const resellerDocumentInput = document.querySelector("#reseller-document-input");
   const resellerPanel = document.querySelector("#reseller-panel");
   const resellersNav = document.querySelector('[data-view-target="resellers"]');
+  const maintenanceNav = document.querySelector('[data-view-target="maintenance"]');
 
   filter.innerHTML = `<option value="">Todas as revendas</option>${currentResellers
     .map((reseller) => `<option value="${reseller.id}">${escapeHtml(reseller.name)}</option>`)
@@ -201,6 +203,7 @@ async function configureScopeControls() {
   filter.hidden = !tronsoft;
   resellerPanel.hidden = !tronsoft;
   resellersNav.hidden = !tronsoft;
+  maintenanceNav.hidden = !tronsoft;
   clientResellerSelect.hidden = !tronsoft;
   resellerNameInput.hidden = tronsoft;
   resellerDocumentInput.hidden = tronsoft;

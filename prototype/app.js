@@ -17,6 +17,8 @@ let monitorFilter = "all";
 let clientPage = 1;
 let maintenanceJobId = null;
 let maintenancePollTimer = null;
+let geoLeafletMap = null;
+let geoLeafletLayer = null;
 const clientsPageSize = 10;
 const themeKey = "central-theme";
 
@@ -147,34 +149,68 @@ function databaseVersion(installation) {
     || "-";
 }
 
-const ufCoordinates = {
-  AC: [18, 45],
-  AL: [77, 61],
-  AP: [49, 16],
-  AM: [33, 31],
-  BA: [66, 58],
-  CE: [71, 43],
-  DF: [57, 61],
-  ES: [70, 72],
-  GO: [55, 62],
-  MA: [61, 39],
-  MG: [63, 69],
-  MS: [48, 73],
-  MT: [45, 58],
-  PA: [52, 31],
-  PB: [76, 48],
-  PE: [76, 52],
-  PI: [65, 45],
-  PR: [56, 83],
-  RJ: [67, 76],
-  RN: [76, 44],
-  RO: [32, 50],
-  RR: [38, 15],
-  RS: [55, 92],
-  SC: [58, 87],
-  SE: [76, 58],
-  SP: [59, 77],
-  TO: [57, 48]
+const stateCoordinates = {
+  AC: [-9.97, -67.82],
+  AL: [-9.65, -35.74],
+  AP: [0.03, -51.05],
+  AM: [-3.1, -60.02],
+  BA: [-12.97, -38.5],
+  CE: [-3.73, -38.53],
+  DF: [-15.78, -47.93],
+  ES: [-20.32, -40.34],
+  GO: [-16.68, -49.25],
+  MA: [-2.53, -44.3],
+  MG: [-19.92, -43.94],
+  MS: [-20.47, -54.62],
+  MT: [-15.6, -56.1],
+  PA: [-1.45, -48.5],
+  PB: [-7.12, -34.86],
+  PE: [-8.05, -34.9],
+  PI: [-5.09, -42.8],
+  PR: [-25.43, -49.27],
+  RJ: [-22.91, -43.17],
+  RN: [-5.79, -35.21],
+  RO: [-8.76, -63.9],
+  RR: [2.82, -60.67],
+  RS: [-30.03, -51.23],
+  SC: [-27.59, -48.55],
+  SE: [-10.91, -37.07],
+  SP: [-23.55, -46.63],
+  TO: [-10.18, -48.33]
+};
+
+const cityCoordinates = {
+  "serra|ES": [-20.13, -40.31],
+  "mafra|SC": [-26.11, -49.8],
+  "rio negro|PR": [-26.1, -49.8],
+  "curitiba|PR": [-25.43, -49.27],
+  "joinville|SC": [-26.3, -48.85],
+  "florianopolis|SC": [-27.59, -48.55],
+  "sao paulo|SP": [-23.55, -46.63],
+  "rio de janeiro|RJ": [-22.91, -43.17],
+  "belo horizonte|MG": [-19.92, -43.94],
+  "porto alegre|RS": [-30.03, -51.23],
+  "brasilia|DF": [-15.78, -47.93],
+  "goiania|GO": [-16.68, -49.25],
+  "cuiaba|MT": [-15.6, -56.1],
+  "campo grande|MS": [-20.47, -54.62],
+  "salvador|BA": [-12.97, -38.5],
+  "recife|PE": [-8.05, -34.9],
+  "fortaleza|CE": [-3.73, -38.53],
+  "natal|RN": [-5.79, -35.21],
+  "joao pessoa|PB": [-7.12, -34.86],
+  "maceio|AL": [-9.65, -35.74],
+  "aracaju|SE": [-10.91, -37.07],
+  "teresina|PI": [-5.09, -42.8],
+  "sao luis|MA": [-2.53, -44.3],
+  "belem|PA": [-1.45, -48.5],
+  "macapa|AP": [0.03, -51.05],
+  "palmas|TO": [-10.18, -48.33],
+  "manaus|AM": [-3.1, -60.02],
+  "boa vista|RR": [2.82, -60.67],
+  "porto velho|RO": [-8.76, -63.9],
+  "rio branco|AC": [-9.97, -67.82],
+  "vitoria|ES": [-20.32, -40.34]
 };
 
 function escapeHtml(value) {
@@ -190,10 +226,23 @@ function normalizeState(value) {
   return String(value || "").trim().toUpperCase().slice(0, 2);
 }
 
+function normalizeLocationKey(value) {
+  return String(value || "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
 function clientLocation(client) {
   const city = client.city || client.customer?.city || "";
   const state = normalizeState(client.state || client.customer?.state || "");
   return { city, state };
+}
+
+function locationCoordinates(point) {
+  const cityKey = `${normalizeLocationKey(point.city)}|${point.state}`;
+  return cityCoordinates[cityKey] || stateCoordinates[point.state] || null;
 }
 
 function selectedResellerId() {
@@ -245,6 +294,9 @@ function showView(view) {
     button.classList.toggle("active", isActive);
   });
   document.querySelector("#page-title").textContent = viewTitles[activeView] || "Central";
+  if (activeView === "dashboard" && geoLeafletMap) {
+    setTimeout(() => geoLeafletMap.invalidateSize(), 80);
+  }
 }
 
 async function loadSession() {
@@ -651,7 +703,7 @@ function renderGeoMap() {
 
   currentClients.forEach((client) => {
     const { city, state } = clientLocation(client);
-    if (!state || !ufCoordinates[state]) return;
+    if (!state || !stateCoordinates[state]) return;
     const key = `${state}|${city || "Sem cidade"}`;
     const current = groups.get(key) || { state, city: city || "Sem cidade", count: 0, online: 0, warning: 0 };
     current.count += 1;
@@ -661,36 +713,54 @@ function renderGeoMap() {
   });
 
   const points = [...groups.values()].sort((a, b) => b.count - a.count || a.state.localeCompare(b.state));
-  const totalClients = points.reduce((sum, point) => sum + point.count, 0);
-  const onlineClients = points.reduce((sum, point) => sum + point.online, 0);
-  const warningClients = points.reduce((sum, point) => sum + point.warning, 0);
-  map.innerHTML = `
-    <div class="brazil-map-stage">
-      <svg class="brazil-shape" viewBox="0 0 360 360" aria-hidden="true" focusable="false">
-        <path d="M126 35 170 22 213 40 246 35 279 64 286 101 318 132 303 171 322 211 293 243 279 287 243 304 211 335 168 315 133 325 96 298 87 253 55 224 68 184 43 146 70 113 72 72z"></path>
-        <path class="brazil-shape-inner" d="M119 72 162 54 213 68 251 84 272 126 281 168 270 213 241 254 202 289 158 293 117 271 91 232 83 184 92 135z"></path>
-      </svg>
-      <div class="map-markers">
-        ${points.map((point, index) => {
-          const [x, y] = ufCoordinates[point.state];
-          const drift = ((index % 5) - 2) * 1.7;
-          const tone = point.warning > 0 ? "warning" : "online";
-          const label = `${point.city} / ${point.state}: ${point.count} cliente(s)`;
-          return `
-            <button class="map-pin ${tone}" type="button" style="--x: ${x + drift}%; --y: ${y + (drift / 2)}%;" title="${escapeHtml(label)}">
-              <span>${point.count}</span>
-              <small>${escapeHtml(point.state)}</small>
-            </button>
-          `;
-        }).join("")}
-      </div>
-      <div class="map-summary">
-        <strong>${totalClients}</strong>
-        <span>cliente(s) mapeado(s)</span>
-        <small>${onlineClients} online, ${warningClients} em atencao</small>
-      </div>
-    </div>
-  `;
+  if (!window.L) {
+    map.innerHTML = `<div class="map-unavailable">Mapa indisponivel. Verifique a conexao com o provedor de mapas.</div>`;
+  } else {
+    if (!geoLeafletMap) {
+      map.innerHTML = `<div id="client-leaflet-map" class="leaflet-map" aria-label="Mapa de clientes"></div>`;
+      geoLeafletMap = L.map("client-leaflet-map", {
+        zoomControl: true,
+        scrollWheelZoom: true
+      }).setView([-14.24, -51.93], 4);
+
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 18,
+        attribution: "&copy; OpenStreetMap"
+      }).addTo(geoLeafletMap);
+      geoLeafletLayer = L.layerGroup().addTo(geoLeafletMap);
+    }
+
+    geoLeafletLayer.clearLayers();
+
+    const bounds = [];
+    points.forEach((point) => {
+      const coordinates = locationCoordinates(point);
+      if (!coordinates) return;
+      const tone = point.warning > 0 ? "warning" : "online";
+      const icon = L.divIcon({
+        className: `client-map-marker ${tone}`,
+        html: `<span>${point.count}</span>`,
+        iconSize: [34, 34],
+        iconAnchor: [17, 34],
+        popupAnchor: [0, -30]
+      });
+      L.marker(coordinates, { icon })
+        .bindPopup(`
+          <strong>${escapeHtml(point.city)} / ${escapeHtml(point.state)}</strong><br>
+          ${point.count} cliente(s)<br>
+          ${point.online} online, ${point.warning} em atencao
+        `)
+        .addTo(geoLeafletLayer);
+      bounds.push(coordinates);
+    });
+
+    if (bounds.length > 0) {
+      geoLeafletMap.fitBounds(bounds, { padding: [44, 44], maxZoom: 11 });
+    } else {
+      geoLeafletMap.setView([-14.24, -51.93], 4);
+    }
+    setTimeout(() => geoLeafletMap.invalidateSize(), 80);
+  }
 
   list.innerHTML = points
     .map((point) => `

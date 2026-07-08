@@ -624,6 +624,16 @@ input[type="search"] {
   gap: 12px;
 }
 
+.clickable-row {
+  cursor: pointer;
+}
+
+tr.clickable-row:hover,
+.monitor-row.clickable-row:hover {
+  border-color: var(--brand);
+  background: var(--surface-soft);
+}
+
 .compact-item strong,
 .compact-item span,
 .geo-item strong,
@@ -712,6 +722,59 @@ input[type="search"] {
   gap: 10px;
   max-height: 320px;
   overflow: auto;
+}
+
+.client-detail {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+
+.detail-hero,
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.detail-section {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+}
+
+.detail-section h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.detail-item,
+.detail-list-item {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--surface-soft);
+}
+
+.detail-item span,
+.detail-list-item span,
+.detail-list-item small {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.detail-item strong,
+.detail-list-item strong {
+  display: block;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.detail-list {
+  display: grid;
+  gap: 8px;
 }
 
 .oauth-summary {
@@ -1022,6 +1085,8 @@ tr:last-child td {
   }
 
   .metrics,
+  .detail-hero,
+  .detail-grid,
   .monitor-head,
   .monitor-row,
   .dashboard-grid,

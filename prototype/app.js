@@ -20,6 +20,8 @@ let maintenanceJobId = null;
 let maintenancePollTimer = null;
 let geoLeafletMap = null;
 let geoLeafletLayer = null;
+let selectedClientId = "";
+let previousDetailView = "clients";
 const clientsPageSize = 10;
 const themeKey = "central-theme";
 
@@ -32,6 +34,7 @@ const viewTitles = {
   alerts: "Alertas",
   oauth: "0auth",
   account: "Minha conta",
+  "client-detail": "Detalhes do cliente",
   maintenance: "Manutencao"
 };
 
@@ -426,13 +429,21 @@ async function loadCentralData() {
       const latestToken = [...(client.pairingTokens || [])].reverse().find((token) => token.status === "active");
       return [{
         id: client.id,
+        detailId: client.id,
         name: client.name,
         reseller: client.reseller?.name || "Sem revenda",
+        rawClient: client,
+        installation: null,
         city: client.city || "",
         state: normalizeState(client.state),
         environment: latestToken ? "Token gerado" : "Aguardando token",
         version: "Aguardando pareamento",
         database: "-",
+        databaseInfo: {},
+        host: {},
+        backups: {},
+        metrics: {},
+        cluster: {},
         status: "unknown",
         lastSeen: "-",
         lastSeenAt: null,
@@ -445,13 +456,21 @@ async function loadCentralData() {
 
     return clientInstallations.map((installation) => ({
       id: client.id,
+      detailId: installation.installationId,
       name: client.name,
       reseller: client.reseller?.name || installation.reseller?.name || "Sem revenda",
+      rawClient: client,
+      installation,
       city: client.city || "",
       state: normalizeState(client.state),
       environment: installation.name,
       version: installation.tronsoftos?.version || "-",
       database: databaseVersion(installation),
+      databaseInfo: installation.database || {},
+      host: installation.host || {},
+      backups: installation.backups || {},
+      metrics: installation.metrics || {},
+      cluster: installation.cluster || {},
       status: installation.status,
       lastSeen: installation.lastSeenAt ? new Date(installation.lastSeenAt).toLocaleString("pt-BR") : "-",
       lastSeenAt: installation.lastSeenAt || null,
@@ -475,6 +494,10 @@ async function loadCentralData() {
   renderAlerts();
   renderUsers();
   renderOAuthSummary();
+  if (activeView === "client-detail" && selectedClientId) {
+    const selected = currentClients.find((client) => client.detailId === selectedClientId || client.id === selectedClientId);
+    if (selected) renderClientDetail(selected);
+  }
 }
 
 function renderMetrics(dashboard) {
@@ -541,7 +564,7 @@ function renderClients(filter = "") {
     .map((client) => {
       const location = [client.city, client.state].filter(Boolean).join(" / ") || "-";
       return `
-        <tr>
+        <tr class="clickable-row" data-client-detail="${escapeHtml(client.detailId)}">
           <td>${escapeHtml(client.name)}<br><span class="muted-cell">${escapeHtml(location)}</span></td>
           <td>${escapeHtml(client.reseller)}</td>
           <td>${escapeHtml(client.environment)}${client.pairingToken ? `<br><span class="token-cell">${escapeHtml(client.pairingToken)}</span>` : ""}</td>
@@ -557,6 +580,9 @@ function renderClients(filter = "") {
       </tr>
     `;
   renderClientPagination(visibleClients.length, totalPages);
+  table.querySelectorAll("[data-client-detail]").forEach((row) => {
+    row.addEventListener("click", () => openClientDetail(row.dataset.clientDetail, "clients"));
+  });
 }
 
 function renderClientPagination(total, totalPages) {
@@ -598,7 +624,7 @@ function renderDashboardClients() {
       const diskTone = disk === null ? "unknown" : disk >= 90 ? "offline" : disk >= 75 ? "warning" : "online";
       const detail = client.alert?.message || client.alert?.title || (client.lastSeenAt ? `Ultimo heartbeat ${formatRelativeTime(client.lastSeenAt)}` : "Aguardando heartbeat");
       return `
-        <article class="monitor-row">
+        <article class="monitor-row clickable-row" data-client-detail="${escapeHtml(client.detailId)}">
           <div class="monitor-client">
             <span class="client-avatar">${escapeHtml(initials(client.name))}</span>
             <div>
@@ -622,6 +648,143 @@ function renderDashboardClients() {
       `;
     })
     .join("") || `<div class="empty-monitor">Nenhum cliente neste filtro.</div>`;
+  list.querySelectorAll("[data-client-detail]").forEach((row) => {
+    row.addEventListener("click", () => openClientDetail(row.dataset.clientDetail, "dashboard"));
+  });
+}
+
+function valueOrDash(value) {
+  if (value === null || value === undefined || value === "") return "-";
+  return String(value);
+}
+
+function bytesLabel(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return "-";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let size = number;
+  let index = 0;
+  while (size >= 1024 && index < units.length - 1) {
+    size /= 1024;
+    index += 1;
+  }
+  return `${size.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+}
+
+function detailItem(label, value) {
+  return `
+    <div class="detail-item">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(valueOrDash(value))}</strong>
+    </div>
+  `;
+}
+
+function detailSection(title, items) {
+  return `
+    <section class="detail-section">
+      <h3>${escapeHtml(title)}</h3>
+      <div class="detail-grid">${items.join("")}</div>
+    </section>
+  `;
+}
+
+function renderBackupFiles(files = []) {
+  if (!Array.isArray(files) || files.length === 0) {
+    return `<p class="empty-note">Nenhum arquivo de backup recente informado.</p>`;
+  }
+  return files.slice(0, 6).map((file) => `
+    <article class="detail-list-item">
+      <strong>${escapeHtml(file.name || file.path || "Backup")}</strong>
+      <span>${escapeHtml(file.modifiedAt ? formatRelativeTime(file.modifiedAt) : "-")} ${file.size ? `- ${escapeHtml(bytesLabel(file.size))}` : ""}</span>
+    </article>
+  `).join("");
+}
+
+function renderClientAlerts(client) {
+  const alerts = currentAlerts.filter((alert) => alert.clientId === client.id).slice(0, 8);
+  if (alerts.length === 0) return `<p class="empty-note">Nenhum alerta recente para este cliente.</p>`;
+  return alerts.map((alert) => `
+    <article class="detail-list-item">
+      <strong>${escapeHtml(alert.title || alert.code || "Alerta")}</strong>
+      <span>${escapeHtml(severityLabels[alert.severity] || alert.severity)} - ${escapeHtml(alert.status === "resolved" ? "Resolvido" : "Aberto")} - ${escapeHtml(formatRelativeTime(alert.openedAt))}</span>
+      ${alert.message ? `<small>${escapeHtml(alert.message)}</small>` : ""}
+    </article>
+  `).join("");
+}
+
+function renderClientDetail(client) {
+  const status = monitorStatus(client);
+  const database = client.databaseInfo || {};
+  const host = client.host || {};
+  const backups = client.backups || {};
+  const metrics = client.metrics || {};
+  const cluster = client.cluster || {};
+  const location = [client.city, client.state].filter(Boolean).join(" / ") || "-";
+
+  document.querySelector("#client-detail-title").textContent = client.name;
+  document.querySelector("#client-detail-subtitle").textContent = `${client.reseller} - ${location}`;
+  document.querySelector("#client-detail-content").innerHTML = `
+    <div class="detail-hero">
+      ${detailItem("Status", statusLabels[status] || status)}
+      ${detailItem("Ultimo heartbeat", client.lastSeen)}
+      ${detailItem("Ambiente", client.environment)}
+      ${detailItem("Token pendente", client.pairingToken || "-")}
+    </div>
+    ${detailSection("Servidor", [
+      detailItem("Hostname", host.hostname),
+      detailItem("IP", host.ip),
+      detailItem("Sistema", host.os),
+      detailItem("TronSoftOS", client.version),
+      detailItem("Uptime", metrics.hostUptimeSeconds ? `${Math.round(Number(metrics.hostUptimeSeconds) / 3600)} h` : "-"),
+      detailItem("Disco", client.diskPercent === null ? "-" : `${client.diskPercent}%`)
+    ])}
+    ${detailSection("Banco de dados", [
+      detailItem("Engine", database.engine || "Firebird"),
+      detailItem("Firebird", database.version),
+      detailItem("versao_banco", client.database),
+      detailItem("Tamanho", database.sizeMb ? `${database.sizeMb} MB` : "-"),
+      detailItem("Schema", database.schemaVersion),
+      detailItem("Alias", database.alias || database.databaseAlias)
+    ])}
+    ${detailSection("Backups", [
+      detailItem("Status", client.backup.label),
+      detailItem("Diretorio", backups.backupDir),
+      detailItem("Rclone", backups.rclone?.remote || backups.rclone?.configured ? "Configurado" : "Nao configurado"),
+      detailItem("Disco backup", backups.disk?.percentUsed ? `${backups.disk.percentUsed}%` : "-"),
+      detailItem("Google Drive", backups.quota?.percentUsed ? `${backups.quota.percentUsed}% usado` : "-"),
+      detailItem("Erro quota", backups.quota?.error)
+    ])}
+    <section class="detail-section">
+      <h3>Arquivos recentes de backup</h3>
+      <div class="detail-list">${renderBackupFiles(backups.recentFiles)}</div>
+    </section>
+    ${detailSection("HA / Standby", [
+      detailItem("Modo", cluster.mode),
+      detailItem("No", cluster.identity?.nodeRole || cluster.nodeRole),
+      detailItem("Standby pronto", cluster.sync?.standbyReady === true ? "Sim" : cluster.sync?.standbyReady === false ? "Nao" : "-"),
+      detailItem("Lag standby", cluster.sync?.standbyLagMinutes !== undefined ? `${cluster.sync.standbyLagMinutes} min` : "-"),
+      detailItem("Failover", cluster.failover?.enabled === true ? "Ativo" : cluster.failover?.enabled === false ? "Manual/desativado" : "-"),
+      detailItem("VIP", cluster.vipStatus?.ip || cluster.vip || "-")
+    ])}
+    <section class="detail-section">
+      <h3>Alertas</h3>
+      <div class="detail-list">${renderClientAlerts(client)}</div>
+    </section>
+  `;
+}
+
+function openClientDetail(clientId, fromView = activeView) {
+  const client = currentClients.find((item) => item.detailId === clientId || item.id === clientId);
+  if (!client) return;
+  selectedClientId = clientId;
+  previousDetailView = fromView === "client-detail" ? "clients" : fromView;
+  renderClientDetail(client);
+  showView("client-detail");
+}
+
+function closeClientDetail() {
+  showView(previousDetailView || "clients");
 }
 
 function setupCityOptions() {
@@ -1153,6 +1316,7 @@ document.querySelector("#reseller-form").addEventListener("submit", createResell
 document.querySelector("#user-form").addEventListener("submit", createUser);
 document.querySelector("#user-role-select").addEventListener("change", updateUserRoleFields);
 document.querySelector("#account-password-form").addEventListener("submit", changeOwnPassword);
+document.querySelector("#client-detail-back").addEventListener("click", closeClientDetail);
 document.querySelector("#maintenance-update-button").addEventListener("click", requestMaintenanceUpdate);
 
 document.querySelector("#refresh-button").innerHTML = iconRefresh();

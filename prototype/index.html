@@ -278,6 +278,19 @@
           </div>
         </section>
 
+        <section class="view" data-view="client-detail" hidden>
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <h2 id="client-detail-title">Detalhes do cliente</h2>
+                <p id="client-detail-subtitle"></p>
+              </div>
+              <button id="client-detail-back" class="secondary-button" type="button">Voltar</button>
+            </div>
+            <div id="client-detail-content" class="client-detail"></div>
+          </div>
+        </section>
+
         <section class="view" data-view="oauth" hidden>
           <div class="panel">
             <div class="panel-header">
@@ -310,6 +323,6 @@
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="app.js?v=20260708-users-resellers"></script>
+    <script src="app.js?v=20260708-client-detail"></script>
   </body>
 </html>

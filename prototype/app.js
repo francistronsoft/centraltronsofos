@@ -673,20 +673,49 @@ function bytesLabel(value) {
 
 function detailItem(label, value) {
   return `
-    <div class="detail-item">
+    <div class="detail-kv">
       <span>${escapeHtml(label)}</span>
       <strong>${escapeHtml(valueOrDash(value))}</strong>
     </div>
   `;
 }
 
-function detailSection(title, items) {
+function gaugeValue(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, Math.min(100, Math.round(number))) : null;
+}
+
+function detailGauge(label, value, tone = "online", caption = "") {
+  const percent = gaugeValue(value);
+  const display = percent === null ? "--" : `${percent}%`;
   return `
-    <section class="detail-section">
-      <h3>${escapeHtml(title)}</h3>
-      <div class="detail-grid">${items.join("")}</div>
-    </section>
+    <article class="ops-gauge ${escapeHtml(tone)}" style="--value:${percent ?? 0}">
+      <div class="gauge-ring"><strong>${escapeHtml(display)}</strong></div>
+      <div>
+        <span>${escapeHtml(label)}</span>
+        <small>${escapeHtml(caption || "sem leitura historica")}</small>
+      </div>
+    </article>
   `;
+}
+
+function detailMetric(title, value, tone = "neutral", caption = "") {
+  return `
+    <article class="ops-metric ${escapeHtml(tone)}">
+      <span>${escapeHtml(title)}</span>
+      <strong>${escapeHtml(valueOrDash(value))}</strong>
+      <small>${escapeHtml(caption)}</small>
+    </article>
+  `;
+}
+
+function miniBars(seed, tone = "online") {
+  const base = Number.isFinite(Number(seed)) ? Number(seed) : 42;
+  const bars = Array.from({ length: 18 }, (_, index) => {
+    const value = Math.max(12, Math.min(92, Math.round((Math.sin(index * 1.7 + base) + 1) * 26 + (base % 35))));
+    return `<span style="height:${value}%"></span>`;
+  }).join("");
+  return `<div class="mini-bars ${escapeHtml(tone)}">${bars}</div>`;
 }
 
 function renderBackupFiles(files = []) {
@@ -705,7 +734,7 @@ function renderClientAlerts(client) {
   const alerts = currentAlerts.filter((alert) => alert.clientId === client.id).slice(0, 8);
   if (alerts.length === 0) return `<p class="empty-note">Nenhum alerta recente para este cliente.</p>`;
   return alerts.map((alert) => `
-    <article class="detail-list-item">
+    <article class="detail-list-item ${escapeHtml(alert.severity || "info")}">
       <strong>${escapeHtml(alert.title || alert.code || "Alerta")}</strong>
       <span>${escapeHtml(severityLabels[alert.severity] || alert.severity)} - ${escapeHtml(alert.status === "resolved" ? "Resolvido" : "Aberto")} - ${escapeHtml(formatRelativeTime(alert.openedAt))}</span>
       ${alert.message ? `<small>${escapeHtml(alert.message)}</small>` : ""}
@@ -715,61 +744,130 @@ function renderClientAlerts(client) {
 
 function renderClientDetail(client) {
   const status = monitorStatus(client);
+  const statusTone = status === "offline" ? "offline" : status === "warning" ? "warning" : status === "online" ? "online" : "unknown";
   const database = client.databaseInfo || {};
   const host = client.host || {};
   const backups = client.backups || {};
   const metrics = client.metrics || {};
   const cluster = client.cluster || {};
   const location = [client.city, client.state].filter(Boolean).join(" / ") || "-";
+  const disk = gaugeValue(client.diskPercent);
+  const diskTone = disk === null ? "unknown" : disk >= 90 ? "offline" : disk >= 75 ? "warning" : "online";
+  const backupDisk = gaugeValue(backups.disk?.percentUsed);
+  const drive = gaugeValue(backups.quota?.percentUsed);
+  const heartbeatAge = client.lastSeenAt ? formatRelativeTime(client.lastSeenAt) : "sem heartbeat";
+  const openAlerts = currentAlerts.filter((alert) => alert.clientId === client.id && alert.status !== "resolved").length;
 
   document.querySelector("#client-detail-title").textContent = client.name;
   document.querySelector("#client-detail-subtitle").textContent = `${client.reseller} - ${location}`;
   document.querySelector("#client-detail-content").innerHTML = `
-    <div class="detail-hero">
-      ${detailItem("Status", statusLabels[status] || status)}
-      ${detailItem("Ultimo heartbeat", client.lastSeen)}
-      ${detailItem("Ambiente", client.environment)}
-      ${detailItem("Token pendente", client.pairingToken || "-")}
-    </div>
-    ${detailSection("Servidor", [
-      detailItem("Hostname", host.hostname),
-      detailItem("IP", host.ip),
-      detailItem("Sistema", host.os),
-      detailItem("TronSoftOS", client.version),
-      detailItem("Uptime", metrics.hostUptimeSeconds ? `${Math.round(Number(metrics.hostUptimeSeconds) / 3600)} h` : "-"),
-      detailItem("Disco", client.diskPercent === null ? "-" : `${client.diskPercent}%`)
-    ])}
-    ${detailSection("Banco de dados", [
-      detailItem("Engine", database.engine || "Firebird"),
-      detailItem("Firebird", database.version),
-      detailItem("versao_banco", client.database),
-      detailItem("Tamanho", database.sizeMb ? `${database.sizeMb} MB` : "-"),
-      detailItem("Schema", database.schemaVersion),
-      detailItem("Alias", database.alias || database.databaseAlias)
-    ])}
-    ${detailSection("Backups", [
-      detailItem("Status", client.backup.label),
-      detailItem("Diretorio", backups.backupDir),
-      detailItem("Rclone", backups.rclone?.remote || backups.rclone?.configured ? "Configurado" : "Nao configurado"),
-      detailItem("Disco backup", backups.disk?.percentUsed ? `${backups.disk.percentUsed}%` : "-"),
-      detailItem("Google Drive", backups.quota?.percentUsed ? `${backups.quota.percentUsed}% usado` : "-"),
-      detailItem("Erro quota", backups.quota?.error)
-    ])}
-    <section class="detail-section">
-      <h3>Arquivos recentes de backup</h3>
-      <div class="detail-list">${renderBackupFiles(backups.recentFiles)}</div>
+    <section class="ops-hero ${escapeHtml(statusTone)}">
+      <div>
+        <span class="ops-eyebrow">Visao operacional</span>
+        <h3>${escapeHtml(client.name)}</h3>
+        <p>${escapeHtml(client.reseller)} - ${escapeHtml(location)} - ${escapeHtml(client.environment)}</p>
+      </div>
+      <div class="ops-hero-actions">
+        <span class="ops-status ${escapeHtml(statusTone)}">${escapeHtml(statusLabels[status] || status)}</span>
+        <button class="secondary-button" type="button" onclick="document.querySelector('#refresh-button').click()">Atualizar</button>
+      </div>
     </section>
-    ${detailSection("HA / Standby", [
-      detailItem("Modo", cluster.mode),
-      detailItem("No", cluster.identity?.nodeRole || cluster.nodeRole),
-      detailItem("Standby pronto", cluster.sync?.standbyReady === true ? "Sim" : cluster.sync?.standbyReady === false ? "Nao" : "-"),
-      detailItem("Lag standby", cluster.sync?.standbyLagMinutes !== undefined ? `${cluster.sync.standbyLagMinutes} min` : "-"),
-      detailItem("Failover", cluster.failover?.enabled === true ? "Ativo" : cluster.failover?.enabled === false ? "Manual/desativado" : "-"),
-      detailItem("VIP", cluster.vipStatus?.ip || cluster.vip || "-")
-    ])}
-    <section class="detail-section">
-      <h3>Alertas</h3>
-      <div class="detail-list">${renderClientAlerts(client)}</div>
+
+    <section class="ops-metrics">
+      ${detailMetric("Heartbeat", heartbeatAge, statusTone, client.lastSeen)}
+      ${detailMetric("Alertas abertos", openAlerts, openAlerts > 0 ? "warning" : "online", "eventos ativos")}
+      ${detailMetric("Banco", client.database, "neutral", "versao_banco")}
+      ${detailMetric("Backup", client.backup.label, client.backup.tone, client.backup.detail)}
+    </section>
+
+    <section class="ops-grid">
+      <article class="ops-panel ops-panel-wide">
+        <div class="ops-panel-head">
+          <div>
+            <h3>Saude do ambiente</h3>
+            <span>${escapeHtml(host.hostname || "hostname nao informado")} - ${escapeHtml(host.ip || "ip nao informado")}</span>
+          </div>
+          <span class="ops-chip ${escapeHtml(statusTone)}">${escapeHtml(client.version)}</span>
+        </div>
+        <div class="gauge-grid">
+          ${detailGauge("Disco servidor", disk, diskTone, "uso geral informado")}
+          ${detailGauge("Disco backup", backupDisk, backupDisk >= 90 ? "offline" : backupDisk >= 75 ? "warning" : "online", backups.backupDir || "diretorio de backup")}
+          ${detailGauge("Google Drive", drive, drive >= 90 ? "offline" : drive >= 75 ? "warning" : "online", backups.quota?.error || "quota remota")}
+        </div>
+      </article>
+
+      <article class="ops-panel">
+        <div class="ops-panel-head">
+          <div>
+            <h3>Tendencia</h3>
+            <span>leituras recentes sinteticas</span>
+          </div>
+        </div>
+        ${miniBars(disk || 35, diskTone)}
+        ${miniBars(backupDisk || 48, backupDisk >= 75 ? "warning" : "online")}
+      </article>
+
+      <article class="ops-panel">
+        <div class="ops-panel-head">
+          <div>
+            <h3>Acoes de suporte</h3>
+            <span>decisao rapida</span>
+          </div>
+        </div>
+        <div class="support-actions">
+          <button class="secondary-button" type="button" onclick="document.querySelector('[data-view-target=&quot;alerts&quot;]').click()">Ver alertas</button>
+          <button class="secondary-button" type="button" onclick="document.querySelector('[data-view-target=&quot;clients&quot;]').click()">Lista clientes</button>
+          <button class="secondary-button" type="button" onclick="document.querySelector('[data-view-target=&quot;oauth&quot;]').click()">0auth</button>
+        </div>
+      </article>
+    </section>
+
+    <section class="ops-grid">
+      <article class="ops-panel">
+        <div class="ops-panel-head"><h3>Servidor</h3></div>
+        <div class="detail-grid compact">
+          ${detailItem("Hostname", host.hostname)}
+          ${detailItem("IP", host.ip)}
+          ${detailItem("Sistema", host.os)}
+          ${detailItem("Uptime", metrics.hostUptimeSeconds ? `${Math.round(Number(metrics.hostUptimeSeconds) / 3600)} h` : "-")}
+        </div>
+      </article>
+
+      <article class="ops-panel">
+        <div class="ops-panel-head"><h3>Banco de dados</h3></div>
+        <div class="detail-grid compact">
+          ${detailItem("Engine", database.engine || "Firebird")}
+          ${detailItem("Firebird", database.version)}
+          ${detailItem("versao_banco", client.database)}
+          ${detailItem("Schema", database.schemaVersion)}
+          ${detailItem("Tamanho", database.sizeMb ? `${database.sizeMb} MB` : "-")}
+          ${detailItem("Alias", database.alias || database.databaseAlias)}
+        </div>
+      </article>
+    </div>
+
+    <section class="ops-grid">
+      <article class="ops-panel">
+        <div class="ops-panel-head"><h3>Backups recentes</h3><span>${escapeHtml(client.backup.label)}</span></div>
+        <div class="detail-list">${renderBackupFiles(backups.recentFiles)}</div>
+      </article>
+
+      <article class="ops-panel">
+        <div class="ops-panel-head"><h3>HA / Standby</h3><span>alta disponibilidade</span></div>
+        <div class="detail-grid compact">
+          ${detailItem("Modo", cluster.mode)}
+          ${detailItem("No", cluster.identity?.nodeRole || cluster.nodeRole)}
+          ${detailItem("Standby pronto", cluster.sync?.standbyReady === true ? "Sim" : cluster.sync?.standbyReady === false ? "Nao" : "-")}
+          ${detailItem("Lag standby", cluster.sync?.standbyLagMinutes !== undefined ? `${cluster.sync.standbyLagMinutes} min` : "-")}
+          ${detailItem("Failover", cluster.failover?.enabled === true ? "Ativo" : cluster.failover?.enabled === false ? "Manual/desativado" : "-")}
+          ${detailItem("VIP", cluster.vipStatus?.ip || cluster.vip || "-")}
+        </div>
+      </article>
+    </section>
+
+    <section class="ops-panel">
+      <div class="ops-panel-head"><h3>Alertas e eventos</h3><span>priorize o que exige acao</span></div>
+      <div class="detail-list alerts-detail">${renderClientAlerts(client)}</div>
     </section>
   `;
 }

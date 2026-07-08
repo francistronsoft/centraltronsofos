@@ -77,6 +77,7 @@ body {
 .login-card input,
 .client-form select,
 .actions select,
+.reseller-form select,
 .reseller-form input {
   min-height: 38px;
   border: 1px solid var(--line);
@@ -123,6 +124,20 @@ input {
   border-radius: 8px;
   background: var(--brand);
   font-weight: 700;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.check-row input {
+  width: 16px;
+  height: 16px;
 }
 
 .brand-logo {
@@ -236,6 +251,23 @@ p {
 
 .primary-button:hover {
   background: var(--brand-strong);
+}
+
+.secondary-button {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0 12px;
+  color: var(--text);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.text-link {
+  display: inline-block;
+  margin-top: 8px;
+  color: var(--brand);
+  font-weight: 700;
 }
 
 .metrics {
@@ -583,6 +615,13 @@ input[type="search"] {
   border-radius: 6px;
   padding: 10px 12px;
   background: var(--surface-soft);
+}
+
+.user-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .compact-item strong,

@@ -6,7 +6,7 @@
     <title>Central TronSoftOS</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="styles.css?v=20260707-leaflet-map">
+    <link rel="stylesheet" href="styles.css?v=20260708-users-resellers">
   </head>
   <body>
     <main id="login-view" class="login-view">
@@ -39,10 +39,12 @@
         <nav class="nav">
           <button class="nav-item active" type="button" data-view-target="dashboard">Painel</button>
           <button class="nav-item" type="button" data-view-target="resellers">Revendas</button>
+          <button class="nav-item" type="button" data-view-target="users">Usuarios</button>
           <button class="nav-item" type="button" data-view-target="clients">Clientes</button>
           <button class="nav-item" type="button" data-view-target="installations">Ambientes</button>
           <button class="nav-item" type="button" data-view-target="alerts">Alertas</button>
           <button class="nav-item" type="button" data-view-target="oauth">0auth</button>
+          <button class="nav-item" type="button" data-view-target="account">Minha conta</button>
           <button class="nav-item" type="button" data-view-target="maintenance">Manutencao</button>
         </nav>
       </aside>
@@ -138,18 +140,62 @@
             <div class="panel-header">
               <div>
                 <h2>Cadastrar revenda</h2>
-                <p>Crie a revenda antes de vincular clientes a ela.</p>
+                <p>Dados comerciais da revenda.</p>
               </div>
             </div>
             <form id="reseller-form" class="reseller-form">
               <input name="name" type="text" placeholder="Revenda" required>
               <input name="document" type="text" placeholder="CNPJ da revenda" required>
-              <input name="accessEmail" type="email" placeholder="Email de acesso da revenda" required>
-              <input name="password" type="text" placeholder="Senha inicial ou deixe em branco">
               <button class="primary-button" type="submit">Salvar revenda</button>
             </form>
             <div id="reseller-result" class="pairing-result" hidden></div>
             <div id="resellers-list" class="compact-list"></div>
+          </section>
+        </section>
+
+        <section class="view" data-view="users" hidden>
+          <section class="panel register-panel">
+            <div class="panel-header">
+              <div>
+                <h2>Cadastrar usuario</h2>
+                <p>Vincule o acesso a uma revenda ou crie usuario TronSoft.</p>
+              </div>
+            </div>
+            <form id="user-form" class="reseller-form">
+              <input name="name" type="text" placeholder="Nome do usuario" required>
+              <input name="email" type="email" placeholder="Email de acesso" required>
+              <select name="role" id="user-role-select">
+                <option value="reseller_user">Revenda</option>
+                <option value="tronsoft_admin">TronSoft</option>
+              </select>
+              <select name="resellerId" id="user-reseller-select" required></select>
+              <input name="password" type="text" placeholder="Senha inicial ou deixe em branco">
+              <label class="check-row">
+                <input name="sendEmail" type="checkbox">
+                <span>Preparar envio por email</span>
+              </label>
+              <button class="primary-button" type="submit">Salvar usuario</button>
+            </form>
+            <div id="user-result" class="pairing-result" hidden></div>
+            <div id="users-list" class="compact-list"></div>
+          </section>
+        </section>
+
+        <section class="view" data-view="account" hidden>
+          <section class="panel register-panel">
+            <div class="panel-header">
+              <div>
+                <h2>Minha conta</h2>
+                <p>Altere sua senha de acesso.</p>
+              </div>
+            </div>
+            <form id="account-password-form" class="reseller-form">
+              <input name="currentPassword" type="password" placeholder="Senha atual" required>
+              <input name="newPassword" type="password" placeholder="Nova senha" required>
+              <input name="confirmPassword" type="password" placeholder="Confirmar nova senha" required>
+              <button class="primary-button" type="submit">Alterar senha</button>
+            </form>
+            <div id="account-result" class="pairing-result" hidden></div>
           </section>
         </section>
 
@@ -264,6 +310,6 @@
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="app.js?v=20260707-leaflet-map"></script>
+    <script src="app.js?v=20260708-users-resellers"></script>
   </body>
 </html>

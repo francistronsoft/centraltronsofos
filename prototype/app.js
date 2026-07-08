@@ -11,6 +11,7 @@ let currentInstallations = [];
 let currentAlerts = [];
 let currentAuthEvents = [];
 let currentResellers = [];
+let currentUsers = [];
 let currentOAuthSummary = null;
 let activeView = "dashboard";
 let monitorFilter = "all";
@@ -25,10 +26,12 @@ const themeKey = "central-theme";
 const viewTitles = {
   dashboard: "Monitoramento geral",
   resellers: "Revendas",
+  users: "Usuarios",
   clients: "Clientes",
   installations: "Ambientes",
   alerts: "Alertas",
   oauth: "0auth",
+  account: "Minha conta",
   maintenance: "Manutencao"
 };
 
@@ -283,7 +286,7 @@ function showApp() {
 
 function showView(view) {
   const tronsoft = currentUser?.role === "tronsoft_admin";
-  const restrictedViews = new Set(["resellers", "maintenance"]);
+  const restrictedViews = new Set(["resellers", "users", "maintenance"]);
   activeView = !tronsoft && restrictedViews.has(view) ? "clients" : view;
 
   document.querySelectorAll("[data-view]").forEach((section) => {
@@ -354,7 +357,9 @@ async function configureScopeControls() {
   const resellerDocumentInput = document.querySelector("#reseller-document-input");
   const resellerPanel = document.querySelector("#reseller-panel");
   const resellersNav = document.querySelector('[data-view-target="resellers"]');
+  const usersNav = document.querySelector('[data-view-target="users"]');
   const maintenanceNav = document.querySelector('[data-view-target="maintenance"]');
+  const userResellerSelect = document.querySelector("#user-reseller-select");
 
   filter.innerHTML = `<option value="">Todas as revendas</option>${currentResellers
     .map((reseller) => `<option value="${reseller.id}">${escapeHtml(reseller.name)}</option>`)
@@ -368,11 +373,16 @@ async function configureScopeControls() {
   clientResellerSelect.innerHTML = clientResellerOptions
     .map((reseller) => `<option value="${reseller.id}">${escapeHtml(reseller.name)}</option>`)
     .join("");
+  userResellerSelect.innerHTML = currentResellers
+    .filter((reseller) => reseller.document !== directTronsoftOption.document && reseller.name.toLowerCase() !== "tronsoft")
+    .map((reseller) => `<option value="${reseller.id}">${escapeHtml(reseller.name)}</option>`)
+    .join("");
 
   const tronsoft = currentUser.role === "tronsoft_admin";
   filter.hidden = !tronsoft;
   resellerPanel.hidden = !tronsoft;
   resellersNav.hidden = !tronsoft;
+  usersNav.hidden = !tronsoft;
   maintenanceNav.hidden = !tronsoft;
   clientResellerSelect.hidden = !tronsoft;
   resellerNameInput.hidden = tronsoft;
@@ -390,16 +400,18 @@ async function configureScopeControls() {
 }
 
 async function loadCentralData() {
-  const [dashboard, registeredClients, installations, alerts, oauthSummary] = await Promise.all([
+  const [dashboard, registeredClients, installations, alerts, oauthSummary, users] = await Promise.all([
     api(`/api/dashboard${querySuffix()}`),
     api(`/api/clients${querySuffix()}`),
     api(`/api/installations${querySuffix()}`),
     api(`/api/alerts${querySuffix()}`),
-    api(`/api/oauth/google/summary${querySuffix()}`)
+    api(`/api/oauth/google/summary${querySuffix()}`),
+    currentUser.role === "tronsoft_admin" ? api("/api/users") : Promise.resolve([])
   ]);
   currentOAuthSummary = oauthSummary;
   currentInstallations = installations;
   currentAlerts = alerts;
+  currentUsers = users;
 
   const installationsByClient = new Map();
   installations.forEach((installation) => {
@@ -461,6 +473,7 @@ async function loadCentralData() {
   renderGeoMap();
   renderAuthEvents();
   renderAlerts();
+  renderUsers();
   renderOAuthSummary();
 }
 
@@ -694,6 +707,32 @@ function renderResellers() {
       `
     )
     .join("") || `<p class="empty-note">Nenhuma revenda cadastrada.</p>`;
+}
+
+function resellerNameById(id) {
+  return currentResellers.find((reseller) => reseller.id === id)?.name || "TronSoft";
+}
+
+function renderUsers() {
+  const list = document.querySelector("#users-list");
+  if (!list) return;
+
+  list.innerHTML = currentUsers
+    .map((user) => `
+      <article class="compact-item user-item">
+        <div>
+          <strong>${escapeHtml(user.name)}</strong>
+          <span>${escapeHtml(user.email)}</span>
+          <span>${user.role === "tronsoft_admin" ? "TronSoft" : `Revenda: ${escapeHtml(resellerNameById(user.resellerId))}`}</span>
+        </div>
+        <button class="secondary-button" type="button" data-password-user="${escapeHtml(user.id)}">Senha</button>
+      </article>
+    `)
+    .join("") || `<p class="empty-note">Nenhum usuario cadastrado.</p>`;
+
+  list.querySelectorAll("[data-password-user]").forEach((button) => {
+    button.addEventListener("click", () => resetUserPassword(button.dataset.passwordUser));
+  });
 }
 
 function renderGeoMap() {
@@ -953,6 +992,108 @@ async function requestMaintenanceUpdate() {
   }
 }
 
+function renderPasswordResult(container, payload, defaultMessage) {
+  container.hidden = false;
+  const mailLink = payload.email?.mailto
+    ? `<br><a class="text-link" href="${escapeHtml(payload.email.mailto)}">Abrir email para ${escapeHtml(payload.email.to)}</a>`
+    : "";
+  container.innerHTML = `
+    <strong>${escapeHtml(defaultMessage)}</strong>
+    ${payload.temporaryPassword ? `<br><code>Senha temporaria: ${escapeHtml(payload.temporaryPassword)}</code>` : ""}
+    ${mailLink}
+  `;
+}
+
+async function createUser(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const data = new FormData(form);
+  const result = document.querySelector("#user-result");
+  const role = data.get("role");
+
+  result.hidden = false;
+  result.textContent = "Salvando usuario...";
+
+  try {
+    const payload = await api("/api/admin/users", {
+      method: "POST",
+      body: JSON.stringify({
+        name: data.get("name"),
+        email: data.get("email"),
+        role,
+        resellerId: role === "reseller_user" ? data.get("resellerId") : "",
+        password: data.get("password"),
+        sendEmail: data.get("sendEmail") === "on"
+      })
+    });
+    renderPasswordResult(result, payload, `Usuario salvo: ${payload.user.email}`);
+    form.reset();
+    updateUserRoleFields();
+    await configureScopeControls();
+    await loadCentralData();
+  } catch (error) {
+    result.textContent = error.message || "Nao foi possivel salvar o usuario.";
+  }
+}
+
+async function resetUserPassword(userId) {
+  const user = currentUsers.find((item) => item.id === userId);
+  if (!user) return;
+  const password = prompt(`Nova senha para ${user.email}. Deixe em branco para gerar automaticamente:`);
+  if (password === null) return;
+  const sendEmail = confirm("Preparar envio por email com a nova senha?");
+  const result = document.querySelector("#user-result");
+  result.hidden = false;
+  result.textContent = "Atualizando senha...";
+
+  try {
+    const payload = await api(`/api/admin/users/${encodeURIComponent(userId)}/password`, {
+      method: "POST",
+      body: JSON.stringify({ password, sendEmail })
+    });
+    renderPasswordResult(result, payload, `Senha atualizada: ${payload.user.email}`);
+    await loadCentralData();
+  } catch (error) {
+    result.textContent = error.message || "Nao foi possivel alterar a senha.";
+  }
+}
+
+async function changeOwnPassword(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const data = new FormData(form);
+  const result = document.querySelector("#account-result");
+  const newPassword = String(data.get("newPassword") || "");
+
+  result.hidden = false;
+  if (newPassword !== String(data.get("confirmPassword") || "")) {
+    result.textContent = "A confirmacao nao confere com a nova senha.";
+    return;
+  }
+
+  result.textContent = "Alterando senha...";
+  try {
+    await api("/api/account/password", {
+      method: "POST",
+      body: JSON.stringify({
+        currentPassword: data.get("currentPassword"),
+        newPassword
+      })
+    });
+    result.innerHTML = "<strong>Senha alterada com sucesso.</strong>";
+    form.reset();
+  } catch (error) {
+    result.textContent = error.message || "Nao foi possivel alterar a senha.";
+  }
+}
+
+function updateUserRoleFields() {
+  const role = document.querySelector("#user-role-select").value;
+  const resellerSelect = document.querySelector("#user-reseller-select");
+  resellerSelect.hidden = role !== "reseller_user";
+  resellerSelect.required = role === "reseller_user";
+}
+
 async function createReseller(event) {
   event.preventDefault();
   const form = event.currentTarget;
@@ -967,16 +1108,13 @@ async function createReseller(event) {
       method: "POST",
       body: JSON.stringify({
         name: data.get("name"),
-        document: data.get("document"),
-        accessEmail: data.get("accessEmail"),
-        password: data.get("password")
+        document: data.get("document")
       })
     });
 
     result.innerHTML = `
       <strong>Revenda salva: ${escapeHtml(reseller.reseller.name)}</strong><br>
-      <span>Acesso: ${escapeHtml(reseller.accessUser.email)}</span>
-      ${reseller.temporaryPassword ? `<br><code>Senha temporaria: ${escapeHtml(reseller.temporaryPassword)}</code>` : ""}
+      <span>Cadastre o usuario da revenda no menu Usuarios.</span>
     `;
     form.reset();
     await configureScopeControls();
@@ -1012,10 +1150,14 @@ document.querySelector("#client-filter").addEventListener("input", (event) => {
 });
 document.querySelector("#client-form").addEventListener("submit", createClient);
 document.querySelector("#reseller-form").addEventListener("submit", createReseller);
+document.querySelector("#user-form").addEventListener("submit", createUser);
+document.querySelector("#user-role-select").addEventListener("change", updateUserRoleFields);
+document.querySelector("#account-password-form").addEventListener("submit", changeOwnPassword);
 document.querySelector("#maintenance-update-button").addEventListener("click", requestMaintenanceUpdate);
 
 document.querySelector("#refresh-button").innerHTML = iconRefresh();
 document.querySelector("#logout-button").innerHTML = iconLogout();
 applyTheme(localStorage.getItem(themeKey) || "light");
 setupCityOptions();
+updateUserRoleFields();
 loadSession();

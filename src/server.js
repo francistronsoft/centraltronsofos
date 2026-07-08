@@ -412,6 +412,23 @@ function ensureResellerAccessUser(db, reseller, payload) {
   return { user, temporaryPassword: providedPassword ? null : password };
 }
 
+function userPasswordEmail(user, password) {
+  const subject = encodeURIComponent("Acesso Central TronSoftOS");
+  const body = encodeURIComponent([
+    `Ola ${user.name || user.email},`,
+    "",
+    "Seu acesso a Central TronSoftOS foi criado/atualizado.",
+    `Usuario: ${user.email}`,
+    `Senha temporaria: ${password}`,
+    "",
+    "Recomendamos alterar a senha no primeiro acesso."
+  ].join("\n"));
+  return {
+    to: user.email,
+    mailto: `mailto:${encodeURIComponent(user.email)}?subject=${subject}&body=${body}`
+  };
+}
+
 function findOrCreateClient(db, reseller, customerPayload) {
   const customerName = requireText(customerPayload?.name, "customer.name");
   const key = clientKey(customerPayload);
@@ -814,12 +831,9 @@ async function handleCreateReseller(request, response) {
   if (!reseller.document) {
     throw httpError(400, "Campo obrigatorio ausente: document.");
   }
-  const access = ensureResellerAccessUser(db, reseller, resellerPayload);
   await writeDb(db);
   sendJson(response, 201, {
-    reseller: publicReseller(reseller, db),
-    accessUser: publicUser(access.user),
-    temporaryPassword: access.temporaryPassword
+    reseller: publicReseller(reseller, db)
   });
 }
 
@@ -962,11 +976,13 @@ async function handleCreateUser(request, response) {
   if (db.users.some((user) => user.email.toLowerCase() === email)) {
     throw httpError(409, "Usuario ja cadastrado.");
   }
+  const providedPassword = payload.password?.trim();
+  const password = providedPassword || generateTemporaryPassword();
   const user = {
     id: randomUUID(),
     name: requireText(payload.name, "name"),
     email,
-    passwordHash: hashPassword(requireText(payload.password, "password")),
+    passwordHash: hashPassword(password),
     role,
     resellerId,
     status: "active",
@@ -974,8 +990,63 @@ async function handleCreateUser(request, response) {
     updatedAt: nowIso()
   };
   db.users.push(user);
+  if (resellerId) {
+    const reseller = db.resellers.find((item) => item.id === resellerId);
+    if (reseller && role === resellerRole && !reseller.accessEmail) {
+      reseller.accessEmail = email;
+      reseller.updatedAt = nowIso();
+    }
+  }
   await writeDb(db);
-  sendJson(response, 201, { user: publicUser(user) });
+  sendJson(response, 201, {
+    user: publicUser(user),
+    temporaryPassword: providedPassword ? null : password,
+    email: payload.sendEmail ? userPasswordEmail(user, password) : null
+  });
+}
+
+async function handleChangeOwnPassword(request, response) {
+  const payload = await readJson(request);
+  const db = await readDbWithBootstrap();
+  const user = requireUser(db, request);
+  const currentPassword = requireText(payload.currentPassword, "currentPassword");
+  const newPassword = requireText(payload.newPassword, "newPassword");
+  if (!verifyPassword(currentPassword, user.passwordHash)) {
+    throw httpError(401, "Senha atual invalida.");
+  }
+  if (newPassword.length < 6) {
+    throw httpError(400, "A nova senha deve ter pelo menos 6 caracteres.");
+  }
+  user.passwordHash = hashPassword(newPassword);
+  user.updatedAt = nowIso();
+  db.sessions = db.sessions.filter((session) => session.userId !== user.id || session.token === parseCookies(request)[sessionCookie]);
+  await writeDb(db);
+  sendJson(response, 200, { ok: true, user: publicUser(user) });
+}
+
+async function handleSetUserPassword(request, response, userId) {
+  const payload = await readJson(request);
+  const db = await readDbWithBootstrap();
+  const currentUser = requireUser(db, request);
+  requireTronsoft(currentUser);
+  const user = db.users.find((item) => item.id === userId);
+  if (!user) throw httpError(404, "Usuario nao encontrado.");
+  const providedPassword = payload.password?.trim();
+  const password = providedPassword || generateTemporaryPassword();
+  if (password.length < 6) {
+    throw httpError(400, "A nova senha deve ter pelo menos 6 caracteres.");
+  }
+  user.passwordHash = hashPassword(password);
+  user.status = "active";
+  user.updatedAt = nowIso();
+  db.sessions = db.sessions.filter((session) => session.userId !== user.id);
+  await writeDb(db);
+  sendJson(response, 200, {
+    ok: true,
+    user: publicUser(user),
+    temporaryPassword: providedPassword ? null : password,
+    email: payload.sendEmail ? userPasswordEmail(user, password) : null
+  });
 }
 
 async function handlePairTronsoftos(request, response) {
@@ -1116,6 +1187,11 @@ async function handleApi(request, response, pathname) {
     return;
   }
 
+  if (request.method === "POST" && pathname === "/api/account/password") {
+    await handleChangeOwnPassword(request, response);
+    return;
+  }
+
   if (request.method === "POST" && pathname === "/api/tronsoftos/identify") {
     await handleIdentify(request, response);
     return;
@@ -1138,6 +1214,12 @@ async function handleApi(request, response, pathname) {
 
   if (request.method === "POST" && pathname === "/api/admin/users") {
     await handleCreateUser(request, response);
+    return;
+  }
+
+  const userPasswordMatch = pathname.match(/^\/api\/admin\/users\/([^/]+)\/password$/);
+  if (request.method === "POST" && userPasswordMatch) {
+    await handleSetUserPassword(request, response, userPasswordMatch[1]);
     return;
   }
 

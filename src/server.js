@@ -260,10 +260,6 @@ function bootstrapUsers(db) {
       existing.status = "active";
       changed = true;
     }
-    if (!verifyPassword(password, existing.passwordHash)) {
-      existing.passwordHash = hashPassword(password);
-      changed = true;
-    }
     if (changed) {
       existing.updatedAt = nowIso();
     }

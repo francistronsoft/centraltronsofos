@@ -671,6 +671,28 @@ function bytesLabel(value) {
   return `${size.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
+function databaseSizeLabel(database = {}) {
+  if (database.fileSizeBytes) return bytesLabel(database.fileSizeBytes);
+  if (database.sizeMb) return `${database.sizeMb} MB`;
+  return "-";
+}
+
+function indexHealthStatus(client) {
+  const health = client.databaseInfo?.indexHealth;
+  const alert = currentAlerts.find((item) => {
+    const text = `${item.code || ""} ${item.title || ""} ${item.message || ""}`.toLowerCase();
+    return item.clientId === client.id && item.status !== "resolved" && (text.includes("indice") || text.includes("index"));
+  });
+  if (health?.severity === "CRITICAL" || alert?.severity === "critical") {
+    return { label: "Sem indice ativo", tone: "offline", detail: `${health?.activeIndexes ?? "-"} / ${health?.totalIndexes ?? "-"} ativos` };
+  }
+  if ((health?.inactiveIndexes || 0) > 0 || alert) {
+    return { label: "Indice em atencao", tone: "warning", detail: `${health?.inactiveIndexes ?? "-"} inativos` };
+  }
+  if (health?.severity) return { label: "Indices OK", tone: "online", detail: `${health.activeIndexes ?? "-"} ativos` };
+  return { label: "Nao informado", tone: "unknown", detail: "sem leitura do TronFire" };
+}
+
 function detailItem(label, value) {
   return `
     <div class="detail-kv">
@@ -718,6 +740,22 @@ function miniBars(seed, tone = "online") {
   return `<div class="mini-bars ${escapeHtml(tone)}">${bars}</div>`;
 }
 
+function metricSeriesValues(metrics = {}, patterns = []) {
+  const series = Array.isArray(metrics.series) ? metrics.series : [];
+  const values = series.filter((metric) => {
+    const text = `${metric.scope || ""} ${metric.target || ""} ${metric.name || ""} ${metric.key || ""}`.toLowerCase();
+    return patterns.some((pattern) => text.includes(pattern));
+  }).map((metric) => Number(metric.value ?? metric.percent ?? metric.valueNumber ?? metric.avg ?? metric.usedPercent)).filter(Number.isFinite);
+  return values.slice(-18);
+}
+
+function metricBars(values, tone = "online") {
+  if (!values.length) return `<div class="metric-empty">sem serie historica</div>`;
+  const max = Math.max(100, ...values);
+  const bars = values.map((value) => `<span style="height:${Math.max(8, Math.min(96, Math.round((value / max) * 96)))}%"></span>`).join("");
+  return `<div class="mini-bars ${escapeHtml(tone)}">${bars}</div>`;
+}
+
 function renderBackupFiles(files = []) {
   if (!Array.isArray(files) || files.length === 0) {
     return `<p class="empty-note">Nenhum arquivo de backup recente informado.</p>`;
@@ -757,6 +795,11 @@ function renderClientDetail(client) {
   const drive = gaugeValue(backups.quota?.percentUsed);
   const heartbeatAge = client.lastSeenAt ? formatRelativeTime(client.lastSeenAt) : "sem heartbeat";
   const openAlerts = currentAlerts.filter((alert) => alert.clientId === client.id && alert.status !== "resolved").length;
+  const indexStatus = indexHealthStatus(client);
+  const databaseSize = databaseSizeLabel(database);
+  const cpuSeries = metricSeriesValues(metrics, ["cpu", "processor"]);
+  const memorySeries = metricSeriesValues(metrics, ["memory", "memoria", "ram"]);
+  const dbGrowthSeed = database.fileSizeBytes ? Math.round(Number(database.fileSizeBytes) / 1024 / 1024) : Number(database.sizeMb || 42);
 
   document.querySelector("#client-detail-title").textContent = client.name;
   document.querySelector("#client-detail-subtitle").textContent = `${client.reseller} - ${location}`;
@@ -799,12 +842,28 @@ function renderClientDetail(client) {
       <article class="ops-panel">
         <div class="ops-panel-head">
           <div>
-            <h3>Tendencia</h3>
-            <span>leituras recentes sinteticas</span>
+            <h3>Crescimento do banco</h3>
+            <span>tendencia do tamanho Firebird</span>
           </div>
         </div>
-        ${miniBars(disk || 35, diskTone)}
-        ${miniBars(backupDisk || 48, backupDisk >= 75 ? "warning" : "online")}
+        ${miniBars(dbGrowthSeed || 42, "online")}
+        <div class="trend-caption">
+          <strong>${escapeHtml(databaseSize)}</strong>
+          <span>tamanho atual reportado pelo TronFire</span>
+        </div>
+      </article>
+
+      <article class="ops-panel">
+        <div class="ops-panel-head">
+          <div>
+            <h3>CPU / Memoria</h3>
+            <span>horarios de maior consumo</span>
+          </div>
+        </div>
+        <div class="metric-chart-label">CPU</div>
+        ${metricBars(cpuSeries, "warning")}
+        <div class="metric-chart-label">Memoria</div>
+        ${metricBars(memorySeries, "online")}
       </article>
 
       <article class="ops-panel">
@@ -839,8 +898,9 @@ function renderClientDetail(client) {
           ${detailItem("Engine", database.engine || "Firebird")}
           ${detailItem("Firebird", database.version)}
           ${detailItem("versao_banco", client.database)}
-          ${detailItem("Schema", database.schemaVersion)}
-          ${detailItem("Tamanho", database.sizeMb ? `${database.sizeMb} MB` : "-")}
+          ${detailItem("Tamanho", databaseSize)}
+          ${detailItem("Indices", indexStatus.label)}
+          ${detailItem("Detalhe indice", indexStatus.detail)}
           ${detailItem("Alias", database.alias || database.databaseAlias)}
         </div>
       </article>

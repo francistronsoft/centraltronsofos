@@ -563,12 +563,14 @@ function renderClients(filter = "") {
   table.innerHTML = pageClients
     .map((client) => {
       const location = [client.city, client.state].filter(Boolean).join(" / ") || "-";
+      const indexStatus = indexHealthStatus(client);
       return `
         <tr class="clickable-row" data-client-detail="${escapeHtml(client.detailId)}">
           <td>${escapeHtml(client.name)}<br><span class="muted-cell">${escapeHtml(location)}</span></td>
           <td>${escapeHtml(client.reseller)}</td>
           <td>${escapeHtml(client.environment)}${client.pairingToken ? `<br><span class="token-cell">${escapeHtml(client.pairingToken)}</span>` : ""}</td>
           <td>${escapeHtml(client.version)}<br><span class="muted-cell">${escapeHtml(client.database || "-")}</span></td>
+          <td><span class="index-pill ${escapeHtml(indexStatus.tone)}">${escapeHtml(indexStatus.shortLabel || indexStatus.label)}</span></td>
           <td><span class="status ${escapeHtml(client.status)}">${escapeHtml(statusLabels[client.status] || client.status)}</span></td>
           <td>${escapeHtml(client.lastSeen)}</td>
         </tr>
@@ -576,7 +578,7 @@ function renderClients(filter = "") {
     })
     .join("") || `
       <tr>
-        <td colspan="6" class="empty-cell">Nenhum cliente encontrado neste escopo.</td>
+        <td colspan="7" class="empty-cell">Nenhum cliente encontrado neste escopo.</td>
       </tr>
     `;
   renderClientPagination(visibleClients.length, totalPages);
@@ -623,6 +625,7 @@ function renderDashboardClients() {
       const disk = client.diskPercent;
       const diskTone = disk === null ? "unknown" : disk >= 90 ? "offline" : disk >= 75 ? "warning" : "online";
       const detail = client.alert?.message || client.alert?.title || (client.lastSeenAt ? `Ultimo heartbeat ${formatRelativeTime(client.lastSeenAt)}` : "Aguardando heartbeat");
+      const indexStatus = indexHealthStatus(client);
       return `
         <article class="monitor-row clickable-row" data-client-detail="${escapeHtml(client.detailId)}">
           <div class="monitor-client">
@@ -637,6 +640,7 @@ function renderDashboardClients() {
             <strong>${escapeHtml(client.database || "-")}</strong>
             <small>versao_banco</small>
           </div>
+          <div><span class="index-pill ${escapeHtml(indexStatus.tone)}">${escapeHtml(indexStatus.shortLabel || indexStatus.label)}</span></div>
           <div><span class="status ${escapeHtml(status)}">${escapeHtml(statusLabels[status] || status)}</span></div>
           <div class="disk-cell">
             <strong>${disk === null ? "--" : `${disk}%`}</strong>
@@ -683,14 +687,31 @@ function indexHealthStatus(client) {
     const text = `${item.code || ""} ${item.title || ""} ${item.message || ""}`.toLowerCase();
     return item.clientId === client.id && item.status !== "resolved" && (text.includes("indice") || text.includes("index"));
   });
-  if (health?.severity === "CRITICAL" || alert?.severity === "critical") {
-    return { label: "Sem indice ativo", tone: "offline", detail: `${health?.activeIndexes ?? "-"} / ${health?.totalIndexes ?? "-"} ativos` };
+  const severity = String(health?.severity || health?.status || "").toLowerCase();
+  const inactive = Number(health?.inactiveIndexes ?? health?.inactive ?? health?.disabledIndexes ?? 0);
+  const missing = Number(health?.missingIndexes ?? health?.withoutIndexes ?? health?.semIndice ?? 0);
+  const active = health?.activeIndexes ?? health?.active ?? "-";
+  const total = health?.totalIndexes ?? health?.total ?? "-";
+  if (severity === "critical" || severity === "offline" || alert?.severity === "critical" || missing > 0) {
+    return {
+      label: "Banco sem indice",
+      shortLabel: "Sem indice",
+      tone: "offline",
+      detail: missing > 0 ? `${missing} indice(s) ausente(s)` : `${active} / ${total} ativos`
+    };
   }
-  if ((health?.inactiveIndexes || 0) > 0 || alert) {
-    return { label: "Indice em atencao", tone: "warning", detail: `${health?.inactiveIndexes ?? "-"} inativos` };
+  if (inactive > 0 || alert || severity === "warning") {
+    return {
+      label: "Indice em atencao",
+      shortLabel: "Atencao",
+      tone: "warning",
+      detail: inactive > 0 ? `${inactive} indice(s) inativo(s)` : (alert?.message || "alerta aberto")
+    };
   }
-  if (health?.severity) return { label: "Indices OK", tone: "online", detail: `${health.activeIndexes ?? "-"} ativos` };
-  return { label: "Nao informado", tone: "unknown", detail: "sem leitura do TronFire" };
+  if (health && (severity || Number.isFinite(Number(total)))) {
+    return { label: "Indices OK", shortLabel: "OK", tone: "online", detail: `${active} ativo(s)` };
+  }
+  return { label: "Nao informado", shortLabel: "Sem leitura", tone: "unknown", detail: "sem leitura do TronFire" };
 }
 
 function detailItem(label, value) {
@@ -738,6 +759,84 @@ function miniBars(seed, tone = "online") {
     return `<span style="height:${value}%"></span>`;
   }).join("");
   return `<div class="mini-bars ${escapeHtml(tone)}">${bars}</div>`;
+}
+
+function weekKey(date) {
+  const copy = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const day = copy.getUTCDay() || 7;
+  copy.setUTCDate(copy.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(copy.getUTCFullYear(), 0, 1));
+  const week = Math.ceil((((copy - yearStart) / 86400000) + 1) / 7);
+  return `${copy.getUTCFullYear()}-S${String(week).padStart(2, "0")}`;
+}
+
+function monthKey(date) {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function databaseGrowthSeries(database = {}) {
+  const history = Array.isArray(database.history) ? database.history : [];
+  const points = history
+    .map((item) => {
+      const rawDate = String(item.date || item.sampledAt || "");
+      const date = rawDate.includes("T") ? new Date(rawDate) : new Date(`${rawDate}T00:00:00Z`);
+      return {
+        date,
+        sizeMb: Number(item.sizeMb)
+      };
+    })
+    .filter((item) => Number.isFinite(item.date.getTime()) && Number.isFinite(item.sizeMb) && item.sizeMb > 0)
+    .sort((a, b) => a.date - b.date);
+
+  if (points.length < 2) {
+    return { mode: "historico", points: [], currentSize: databaseSizeLabel(database), deltaMb: null };
+  }
+
+  const spanDays = Math.max(1, Math.round((points.at(-1).date - points[0].date) / 86400000));
+  const mode = spanDays > 120 ? "mes" : "semana";
+  const buckets = new Map();
+  points.forEach((point) => {
+    const key = mode === "mes" ? monthKey(point.date) : weekKey(point.date);
+    buckets.set(key, point);
+  });
+  const grouped = [...buckets.entries()].map(([label, point]) => ({ label, sizeMb: point.sizeMb }));
+  const visible = grouped.slice(-12);
+  return {
+    mode,
+    points: visible,
+    currentSize: databaseSizeLabel(database),
+    deltaMb: visible.length >= 2 ? visible.at(-1).sizeMb - visible[0].sizeMb : null
+  };
+}
+
+function databaseGrowthChart(database = {}) {
+  const series = databaseGrowthSeries(database);
+  if (series.points.length < 2) {
+    return `
+      <div class="metric-empty growth-empty">
+        <strong>${escapeHtml(series.currentSize)}</strong>
+        <span>aguardando historico semanal/mensal</span>
+      </div>
+    `;
+  }
+  const max = Math.max(...series.points.map((point) => point.sizeMb));
+  const min = Math.min(...series.points.map((point) => point.sizeMb));
+  const range = Math.max(1, max - min);
+  const bars = series.points.map((point) => {
+    const height = Math.max(12, Math.round(((point.sizeMb - min) / range) * 72) + 20);
+    return `<span title="${escapeHtml(point.label)} - ${escapeHtml(point.sizeMb.toFixed(1))} MB" style="height:${height}%"><small>${escapeHtml(point.label.replace("-", "/"))}</small></span>`;
+  }).join("");
+  const delta = series.deltaMb;
+  const deltaText = Number.isFinite(delta)
+    ? `${delta >= 0 ? "+" : ""}${delta.toFixed(1)} MB no periodo`
+    : "sem variacao calculada";
+  return `
+    <div class="mini-bars growth-bars">${bars}</div>
+    <div class="trend-caption">
+      <strong>${escapeHtml(series.currentSize)}</strong>
+      <span>${escapeHtml(series.mode === "mes" ? "progressao mensal" : "progressao semanal")} - ${escapeHtml(deltaText)}</span>
+    </div>
+  `;
 }
 
 function metricSeriesValues(metrics = {}, patterns = []) {
@@ -799,7 +898,6 @@ function renderClientDetail(client) {
   const databaseSize = databaseSizeLabel(database);
   const cpuSeries = metricSeriesValues(metrics, ["cpu", "processor"]);
   const memorySeries = metricSeriesValues(metrics, ["memory", "memoria", "ram"]);
-  const dbGrowthSeed = database.fileSizeBytes ? Math.round(Number(database.fileSizeBytes) / 1024 / 1024) : Number(database.sizeMb || 42);
 
   document.querySelector("#client-detail-title").textContent = client.name;
   document.querySelector("#client-detail-subtitle").textContent = `${client.reseller} - ${location}`;
@@ -843,14 +941,10 @@ function renderClientDetail(client) {
         <div class="ops-panel-head">
           <div>
             <h3>Crescimento do banco</h3>
-            <span>tendencia do tamanho Firebird</span>
+            <span>progressao por semana ou mes</span>
           </div>
         </div>
-        ${miniBars(dbGrowthSeed || 42, "online")}
-        <div class="trend-caption">
-          <strong>${escapeHtml(databaseSize)}</strong>
-          <span>tamanho atual reportado pelo TronFire</span>
-        </div>
+        ${databaseGrowthChart(database)}
       </article>
 
       <article class="ops-panel">

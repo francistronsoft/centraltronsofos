@@ -484,7 +484,12 @@ function upsertInstallation(db, client, payload) {
       version: payload.database?.version || "",
       schemaVersion: payload.database?.schemaVersion || "",
       versaoBanco: payload.database?.versaoBanco || payload.database?.versao_banco || payload.database?.schemaVersion || "",
-      sizeMb: payload.database?.sizeMb ?? null
+      sizeMb: payload.database?.sizeMb ?? null,
+      fileSizeBytes: payload.database?.fileSizeBytes ?? null,
+      databaseName: payload.database?.databaseName || "",
+      databaseAlias: payload.database?.databaseAlias || payload.database?.alias || "",
+      indexHealth: payload.database?.indexHealth ?? null,
+      history: existing?.database?.history || []
     },
     host: {
       hostname: payload.host?.hostname || "",
@@ -501,10 +506,12 @@ function upsertInstallation(db, client, payload) {
 
   if (existing) {
     Object.assign(existing, installation);
+    appendDatabaseHistory(existing);
     return existing;
   }
 
   db.installations.push(installation);
+  appendDatabaseHistory(installation);
   return installation;
 }
 
@@ -530,7 +537,12 @@ function upsertInstallationForClient(db, client, payload) {
       version: payload.database?.version || "",
       schemaVersion: payload.database?.schemaVersion || "",
       versaoBanco: payload.database?.versaoBanco || payload.database?.versao_banco || payload.database?.schemaVersion || "",
-      sizeMb: payload.database?.sizeMb ?? null
+      sizeMb: payload.database?.sizeMb ?? null,
+      fileSizeBytes: payload.database?.fileSizeBytes ?? null,
+      databaseName: payload.database?.databaseName || "",
+      databaseAlias: payload.database?.databaseAlias || payload.database?.alias || "",
+      indexHealth: payload.database?.indexHealth ?? null,
+      history: existing?.database?.history || []
     },
     host: {
       hostname: payload.host?.hostname || "",
@@ -547,11 +559,41 @@ function upsertInstallationForClient(db, client, payload) {
 
   if (existing) {
     Object.assign(existing, installation);
+    appendDatabaseHistory(existing);
     return existing;
   }
 
   db.installations.push(installation);
+  appendDatabaseHistory(installation);
   return installation;
+}
+
+function databaseSizeMb(database = {}) {
+  const sizeMb = Number(database.sizeMb);
+  if (Number.isFinite(sizeMb) && sizeMb > 0) return Number(sizeMb.toFixed(2));
+  const bytes = Number(database.fileSizeBytes);
+  if (Number.isFinite(bytes) && bytes > 0) return Number((bytes / 1024 / 1024).toFixed(2));
+  return null;
+}
+
+function appendDatabaseHistory(installation) {
+  const sizeMb = databaseSizeMb(installation.database);
+  if (!Number.isFinite(sizeMb)) return;
+
+  const sampledAt = nowIso();
+  const day = sampledAt.slice(0, 10);
+  const history = Array.isArray(installation.database.history)
+    ? installation.database.history.filter((item) => item && item.date && Number.isFinite(Number(item.sizeMb)))
+    : [];
+  const existing = history.find((item) => item.date === day);
+  if (existing) {
+    existing.sizeMb = sizeMb;
+    existing.sampledAt = sampledAt;
+  } else {
+    history.push({ date: day, sizeMb, sampledAt });
+  }
+  history.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  installation.database.history = history.slice(-370);
 }
 
 function findInstallationByRequest(db, payload, request) {
@@ -1093,6 +1135,7 @@ async function handleHeartbeat(request, response) {
     || payload.database?.schemaVersion
     || installation.database.versaoBanco
     || "";
+  appendDatabaseHistory(installation);
   installation.host = { ...installation.host, ...payload.host };
   installation.cluster = { ...(installation.cluster || {}), ...(payload.cluster || {}) };
   installation.backups = { ...(installation.backups || {}), ...(payload.backups || {}) };

@@ -1434,6 +1434,8 @@ async function serveStatic(request, response, pathname) {
   response.writeHead(200, {
     "content-type": contentTypes[extension] || "application/octet-stream",
     "cache-control": noStore ? "no-store, max-age=0" : "no-cache, max-age=0, must-revalidate",
+    "cdn-cache-control": "no-store",
+    "cloudflare-cdn-cache-control": "no-store",
     "pragma": "no-cache",
     "expires": "0"
   });

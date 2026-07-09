@@ -6,7 +6,7 @@
     <title>Central TronSoftOS</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="styles.css?v=20260709-index-health-login">
+    <link rel="stylesheet" href="styles.css?v=20260709-cadastros-index-ok">
   </head>
   <body>
     <main id="login-view" class="login-view">
@@ -38,9 +38,12 @@
 
         <nav class="nav">
           <button class="nav-item active" type="button" data-view-target="dashboard">Painel</button>
-          <button class="nav-item" type="button" data-view-target="resellers">Revendas</button>
-          <button class="nav-item" type="button" data-view-target="users">Usuarios</button>
-          <button class="nav-item" type="button" data-view-target="clients">Clientes</button>
+          <div class="nav-group" data-nav-group="registrations">
+            <span class="nav-group-title">Cadastros</span>
+            <button class="nav-item nav-subitem" type="button" data-view-target="resellers">Revendas</button>
+            <button class="nav-item nav-subitem" type="button" data-view-target="users">Usuarios</button>
+            <button class="nav-item nav-subitem" type="button" data-view-target="clients">Clientes</button>
+          </div>
           <button class="nav-item" type="button" data-view-target="installations">Ambientes</button>
           <button class="nav-item" type="button" data-view-target="alerts">Alertas</button>
           <button class="nav-item" type="button" data-view-target="oauth">0auth</button>
@@ -215,7 +218,6 @@
               <input name="customerName" type="text" placeholder="Cliente" required>
               <input name="customerDocument" type="text" placeholder="Documento do cliente">
               <input name="customerCity" type="text" placeholder="Cidade" list="city-options">
-              <input name="customerState" type="text" placeholder="UF" maxlength="2">
               <datalist id="city-options"></datalist>
               <button class="primary-button" type="submit">Gerar token</button>
             </form>
@@ -325,6 +327,6 @@
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="app.js?v=20260709-index-health-login"></script>
+    <script src="app.js?v=20260709-cadastros-index-ok"></script>
   </body>
 </html>

@@ -384,6 +384,7 @@ async function configureScopeControls() {
   const resellerPanel = document.querySelector("#reseller-panel");
   const resellersNav = document.querySelector('[data-view-target="resellers"]');
   const usersNav = document.querySelector('[data-view-target="users"]');
+  const registrationsGroup = document.querySelector('[data-nav-group="registrations"]');
   const maintenanceNav = document.querySelector('[data-view-target="maintenance"]');
   const userResellerSelect = document.querySelector("#user-reseller-select");
 
@@ -409,6 +410,7 @@ async function configureScopeControls() {
   resellerPanel.hidden = !tronsoft;
   resellersNav.hidden = !tronsoft;
   usersNav.hidden = !tronsoft;
+  registrationsGroup.hidden = false;
   maintenanceNav.hidden = !tronsoft;
   clientResellerSelect.hidden = !tronsoft;
   resellerNameInput.hidden = tronsoft;
@@ -730,14 +732,29 @@ function indexHealthStatus(client) {
   const severity = String(health?.severity || health?.status || "").toLowerCase();
   const inactive = Number(health?.inactiveIndexes ?? health?.inactive ?? health?.disabledIndexes ?? 0);
   const missing = Number(health?.missingIndexes ?? health?.withoutIndexes ?? health?.semIndice ?? 0);
+  const missingCriticalTables = Array.isArray(health?.missingActiveTables) ? health.missingActiveTables : [];
   const active = health?.activeIndexes ?? health?.active ?? "-";
   const total = health?.totalIndexes ?? health?.total ?? "-";
-  if (severity === "critical" || severity === "offline" || alert?.severity === "critical" || missing > 0) {
+  if (missingCriticalTables.length > 0 || missing > 0) {
     return {
       label: "Banco sem indice",
       shortLabel: "Sem indice",
       tone: "offline",
-      detail: missing > 0 ? `${missing} indice(s) ausente(s)` : `${active} / ${total} ativos`
+      detail: missingCriticalTables.length > 0
+        ? `${missingCriticalTables.length} tabela(s) critica(s): ${missingCriticalTables.slice(0, 4).join(", ")}`
+        : `${missing} indice(s) ausente(s)`
+    };
+  }
+  if (health && (severity === "ok" || severity === "info" || Number.isFinite(Number(total)))) {
+    const inactiveDetail = inactive > 0 ? `; ${inactive} inativo(s) nao criticos` : "";
+    return { label: "Indices OK", shortLabel: "OK", tone: "online", detail: `${active} / ${total} ativos${inactiveDetail}` };
+  }
+  if (severity === "critical" || severity === "offline" || alert?.severity === "critical") {
+    return {
+      label: "Indice em atencao",
+      shortLabel: "Atencao",
+      tone: "warning",
+      detail: alert?.message || `${active} / ${total} ativos`
     };
   }
   if (inactive > 0 || alert || severity === "warning") {

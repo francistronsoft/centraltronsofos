@@ -162,6 +162,20 @@ input {
   gap: 6px;
 }
 
+.nav-group {
+  display: grid;
+  gap: 6px;
+}
+
+.nav-group-title {
+  margin: 12px 12px 2px;
+  color: #8fa0af;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .nav-item {
   width: 100%;
   min-height: 42px;
@@ -172,6 +186,11 @@ input {
   background: transparent;
   text-align: left;
   cursor: pointer;
+}
+
+.nav-subitem {
+  min-height: 38px;
+  padding-left: 28px;
 }
 
 .nav-item:hover,
@@ -598,14 +617,7 @@ input[type="search"] {
 
 .client-form {
   display: grid;
-  grid-template-columns:
-    minmax(150px, 1fr)
-    minmax(150px, 1fr)
-    minmax(170px, 1fr)
-    minmax(150px, 1fr)
-    minmax(150px, 1fr)
-    72px
-    minmax(130px, 0.8fr);
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 10px;
   padding: 18px;
 }
@@ -618,6 +630,7 @@ input[type="search"] {
 }
 
 .client-form button {
+  min-width: 140px;
   white-space: nowrap;
 }
 

@@ -109,6 +109,95 @@ Resposta:
 
 O TronSoftOS guarda o `installationToken` para chamadas futuras.
 
+## Autenticar Google Drive pela Central
+
+Esse fluxo substitui a configuracao manual do `rclone config`. A Central faz o OAuth Google, guarda o refresh token por instalacao e entrega ao TronSoftOS um `rclone.conf` pronto para uso.
+
+Todas as chamadas do TronSoftOS usam:
+
+```text
+x-installation-token: token-da-instalacao
+```
+
+### Consultar status
+
+`GET /api/tronsoftos/oauth/google/status`
+
+Resposta:
+
+```json
+{
+  "configured": true,
+  "connected": false,
+  "installationId": "cliente-001-matriz",
+  "account": null,
+  "redirectUri": "https://central.tronsoft.app.br/api/oauth/google/callback",
+  "scopes": ["https://www.googleapis.com/auth/drive.file"]
+}
+```
+
+### Iniciar autenticacao
+
+`POST /api/tronsoftos/oauth/google/start`
+
+```json
+{
+  "remote": "gdrive",
+  "path": "tronsoftos/backups"
+}
+```
+
+Resposta:
+
+```json
+{
+  "provider": "google",
+  "authUrl": "https://accounts.google.com/o/oauth2/v2/auth?...",
+  "state": "estado-temporario",
+  "expiresAt": "2026-07-14T12:15:00.000Z",
+  "redirectUri": "https://central.tronsoft.app.br/api/oauth/google/callback"
+}
+```
+
+O TronSoftOS deve abrir `authUrl` no navegador. Ao finalizar, o Google chama:
+
+```text
+GET /api/oauth/google/callback
+```
+
+### Obter configuracao pronta
+
+Depois da autorizacao, o TronSoftOS chama:
+
+`POST /api/tronsoftos/oauth/google/token`
+
+Resposta:
+
+```json
+{
+  "connected": true,
+  "account": {
+    "provider": "google",
+    "accountEmail": "cliente@gmail.com",
+    "remote": "gdrive",
+    "path": "tronsoftos/backups"
+  },
+  "token": {
+    "access_token": "ya29...",
+    "refresh_token": "1//...",
+    "token_type": "Bearer",
+    "expiry": "2026-07-14T13:00:00.000Z"
+  },
+  "rclone": {
+    "remote": "gdrive",
+    "path": "tronsoftos/backups",
+    "configContent": "[gdrive]\ntype = drive\nscope = drive\n..."
+  }
+}
+```
+
+O TronSoftOS grava `rclone.configContent` no caminho local do `rclone.conf`, salva `remote/path` e habilita os backups sem pedir que o tecnico rode o fluxo manual do rclone.
+
 ## Identificar instalacao legado
 
 `POST /api/tronsoftos/identify`

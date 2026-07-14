@@ -723,6 +723,17 @@ function latestOAuthCredential(db, installation, provider = "google") {
     .find((credential) => credential.installationId === installation.installationId && credential.provider === provider && credential.status === "connected") || null;
 }
 
+function googleDriveRcloneConfig({ remote = "gdrive", clientId, clientSecret, token }) {
+  return [
+    `[${remote}]`,
+    "type = drive",
+    "scope = drive",
+    `client_id = ${clientId}`,
+    `client_secret = ${clientSecret}`,
+    `token = ${JSON.stringify(token)}`
+  ].join("\n") + "\n";
+}
+
 function publicOAuthStatus(db, installation, request) {
   const credential = latestOAuthCredential(db, installation);
   const config = googleOAuthConfig(request);
@@ -733,6 +744,12 @@ function publicOAuthStatus(db, installation, request) {
     configured: Boolean(config.clientId && config.clientSecret),
     connected: Boolean(credential),
     accountEmail: credential?.accountEmail || "",
+    account: credential ? {
+      provider: "google",
+      accountEmail: credential.accountEmail || "",
+      remote: credential.remote || "gdrive",
+      path: credential.path || "tronsoftos/backups"
+    } : null,
     scopes: credential?.scopes || [],
     connectedAt: credential?.connectedAt || null,
     updatedAt: credential?.updatedAt || null
@@ -928,6 +945,8 @@ async function handleOAuthStart(request, response) {
     clientId: installation.clientId,
     status: "pending",
     requestedBy: payload.requestedBy || "tronsoftos",
+    remote: String(payload.remote || "gdrive").trim() || "gdrive",
+    path: String(payload.path || "tronsoftos/backups").trim() || "tronsoftos/backups",
     createdAt: nowIso(),
     expiresAt
   };
@@ -947,6 +966,7 @@ async function handleOAuthStart(request, response) {
   sendJson(response, 201, {
     provider: "google",
     purpose: "database_backup_drive",
+    authUrl: authorizationUrl.toString(),
     authorizationUrl: authorizationUrl.toString(),
     state,
     expiresAt
@@ -992,6 +1012,8 @@ async function handleOAuthCallback(request, response, url) {
   credential.accessToken = tokenPayload.access_token;
   credential.refreshToken = tokenPayload.refresh_token || credential.refreshToken;
   credential.tokenType = tokenPayload.token_type || "Bearer";
+  credential.remote = oauthState.remote || credential.remote || "gdrive";
+  credential.path = oauthState.path || credential.path || "tronsoftos/backups";
   credential.expiresAt = new Date(Date.now() + Number(tokenPayload.expires_in || 3600) * 1000).toISOString();
   credential.connectedAt = credential.connectedAt || nowIso();
   credential.updatedAt = nowIso();
@@ -1023,12 +1045,37 @@ async function handleOAuthAccessToken(request, response) {
     await writeDb(db);
   }
 
+  const token = {
+    access_token: credential.accessToken,
+    refresh_token: credential.refreshToken,
+    token_type: credential.tokenType || "Bearer",
+    expiry: credential.expiresAt
+  };
+
   sendJson(response, 200, {
+    connected: true,
     provider: "google",
     tokenType: credential.tokenType || "Bearer",
     accessToken: credential.accessToken,
     expiresAt: credential.expiresAt,
-    scopes: credential.scopes || []
+    scopes: credential.scopes || [],
+    account: {
+      provider: "google",
+      accountEmail: credential.accountEmail || "",
+      remote: credential.remote || "gdrive",
+      path: credential.path || "tronsoftos/backups"
+    },
+    token,
+    rclone: {
+      remote: credential.remote || "gdrive",
+      path: credential.path || "tronsoftos/backups",
+      configContent: googleDriveRcloneConfig({
+        remote: credential.remote || "gdrive",
+        clientId: googleOAuthConfig(request).clientId,
+        clientSecret: googleOAuthConfig(request).clientSecret,
+        token
+      })
+    }
   });
 }
 

@@ -20,6 +20,11 @@ const emptyDb = {
   oauthEvents: []
 };
 
+const maxEvents = Number(process.env.CENTRAL_MAX_EVENTS || 300);
+const maxAlerts = Number(process.env.CENTRAL_MAX_ALERTS || 500);
+const maxMetricSeries = Number(process.env.CENTRAL_MAX_METRIC_SERIES || 96);
+const maxBackupFiles = Number(process.env.CENTRAL_MAX_BACKUP_FILES || 20);
+
 let pgPool = null;
 let pgReady = false;
 
@@ -29,6 +34,62 @@ function usePostgres() {
 
 function withDefaults(db) {
   return { ...emptyDb, ...(db || {}) };
+}
+
+function compactMetricSeries(metrics = {}) {
+  if (!metrics || typeof metrics !== "object") return {};
+  const next = { ...metrics };
+  const systemMetrics = next.systemMetrics && typeof next.systemMetrics === "object" ? { ...next.systemMetrics } : null;
+  if (systemMetrics) {
+    if (Array.isArray(systemMetrics.series)) {
+      systemMetrics.series = systemMetrics.series.slice(-maxMetricSeries);
+    }
+    next.systemMetrics = systemMetrics;
+  }
+  if (Array.isArray(next.series)) {
+    next.series = next.series.slice(-maxMetricSeries);
+  }
+  return next;
+}
+
+function compactBackups(backups = {}) {
+  if (!backups || typeof backups !== "object") return {};
+  const next = { ...backups };
+  if (Array.isArray(next.recentFiles)) {
+    next.recentFiles = next.recentFiles.slice(0, maxBackupFiles);
+  }
+  return next;
+}
+
+function compactEvent(event = {}) {
+  const payload = event.payload || {};
+  return {
+    id: event.id,
+    installationId: event.installationId,
+    type: event.type,
+    receivedAt: event.receivedAt,
+    payload: {
+      status: payload.status,
+      installationId: payload.installationId,
+      tronsoftos: payload.tronsoftos,
+      database: payload.database,
+      host: payload.host,
+      backups: payload.backups ? compactBackups(payload.backups) : undefined
+    }
+  };
+}
+
+function compactDb(db) {
+  const next = withDefaults(db);
+  next.installations = next.installations.map((installation) => ({
+    ...installation,
+    backups: compactBackups(installation.backups),
+    metrics: compactMetricSeries(installation.metrics)
+  }));
+  next.events = next.events.slice(-maxEvents).map(compactEvent);
+  next.alerts = next.alerts.slice(-maxAlerts);
+  next.oauthEvents = next.oauthEvents.slice(-maxEvents);
+  return next;
 }
 
 async function postgresPool() {
@@ -61,7 +122,7 @@ async function readPostgresDb() {
   await ensurePostgresDb();
   const pool = await postgresPool();
   const result = await pool.query("select data from central_state where id = 1");
-  return withDefaults(result.rows[0]?.data);
+  return compactDb(result.rows[0]?.data);
 }
 
 async function writePostgresDb(db) {
@@ -71,7 +132,7 @@ async function writePostgresDb(db) {
     `insert into central_state (id, data, updated_at)
      values (1, $1::jsonb, now())
      on conflict (id) do update set data = excluded.data, updated_at = now()`,
-    [JSON.stringify(withDefaults(db))]
+    [JSON.stringify(compactDb(db))]
   );
 }
 
@@ -88,12 +149,12 @@ async function ensureFileDb() {
 async function readFileDb() {
   await ensureFileDb();
   const raw = await readFile(dataFile, "utf8");
-  return withDefaults(JSON.parse(raw));
+  return compactDb(JSON.parse(raw));
 }
 
 async function writeFileDb(db) {
   await mkdir(dataDir, { recursive: true });
-  await writeFile(dataFile, `${JSON.stringify(withDefaults(db), null, 2)}\n`, "utf8");
+  await writeFile(dataFile, `${JSON.stringify(compactDb(db), null, 2)}\n`, "utf8");
 }
 
 export async function readDb() {

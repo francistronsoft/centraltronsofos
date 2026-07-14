@@ -18,6 +18,7 @@ const googleDriveScope = "https://www.googleapis.com/auth/drive.file";
 const updateCommand = process.env.CENTRAL_UPDATE_COMMAND || "/usr/local/sbin/central-tronsoftos-update";
 const updateTimeoutMs = Number(process.env.CENTRAL_UPDATE_TIMEOUT_MS || 15 * 60 * 1000);
 const maxJobLogLength = 80_000;
+const offlineAfterMinutes = Number(process.env.CENTRAL_OFFLINE_AFTER_MINUTES || 15);
 const maintenanceJobs = new Map();
 
 const contentTypes = {
@@ -115,6 +116,19 @@ function startMaintenanceUpdateJob() {
 function normalizeStatus(status) {
   const allowed = new Set(["online", "warning", "offline", "unknown"]);
   return allowed.has(status) ? status : "unknown";
+}
+
+function minutesSince(value) {
+  if (!value) return null;
+  const time = new Date(value).getTime();
+  if (!Number.isFinite(time)) return null;
+  return Math.max(0, Math.round((Date.now() - time) / 60000));
+}
+
+function effectiveInstallationStatus(installation = {}) {
+  const age = minutesSince(installation.lastSeenAt);
+  if (age !== null && age > offlineAfterMinutes) return "offline";
+  return normalizeStatus(installation.status || "unknown");
 }
 
 function normalizeSeverity(severity) {
@@ -282,6 +296,9 @@ function bootstrapUsers(db) {
 
 async function readDbWithBootstrap() {
   const db = await readDb();
+  const now = Date.now();
+  db.sessions = db.sessions.filter((session) => new Date(session.expiresAt).getTime() > now);
+  db.oauthStates = db.oauthStates.filter((state) => state.status !== "pending" || new Date(state.expiresAt).getTime() > now);
   if (bootstrapUsers(db)) {
     await writeDb(db);
   }
@@ -667,12 +684,13 @@ function publicPairingToken(token) {
 function publicInstallation(db, installation) {
   const client = db.clients.find((item) => item.id === installation.clientId);
   const reseller = db.resellers.find((item) => item.id === client?.resellerId);
+  const status = effectiveInstallationStatus(installation);
 
   return {
     id: installation.id,
     installationId: installation.installationId,
     name: installation.name,
-    status: installation.status,
+    status,
     lastSeenAt: installation.lastSeenAt,
     tronsoftos: installation.tronsoftos,
     database: installation.database,
@@ -806,9 +824,9 @@ async function fetchGoogleUserInfo(accessToken) {
 
 function dashboard(db) {
   const criticalAlerts = db.alerts.filter((alert) => alert.status === "open" && alert.severity === "critical").length;
-  const online = db.installations.filter((installation) => installation.status === "online").length;
-  const warning = db.installations.filter((installation) => installation.status === "warning").length;
-  const offline = db.installations.filter((installation) => installation.status === "offline").length;
+  const online = db.installations.filter((installation) => effectiveInstallationStatus(installation) === "online").length;
+  const warning = db.installations.filter((installation) => effectiveInstallationStatus(installation) === "warning").length;
+  const offline = db.installations.filter((installation) => effectiveInstallationStatus(installation) === "offline").length;
 
   return {
     resellers: db.resellers.length,

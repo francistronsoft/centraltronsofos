@@ -936,8 +936,9 @@ function databaseGrowthChart(database = {}) {
 
 function metricSeriesValues(metrics = {}, valueKeys = [], patterns = []) {
   const systemMetrics = metrics.systemMetrics || metrics;
-  const series = Array.isArray(systemMetrics.series) && systemMetrics.series.length ? systemMetrics.series : systemMetrics.latest || metrics.series || [];
-  const rows = Array.isArray(series) ? series : [];
+  const latestRows = Array.isArray(systemMetrics.latest) ? systemMetrics.latest : systemMetrics.latest ? [systemMetrics.latest] : [];
+  const fallbackRows = Array.isArray(metrics.series) ? metrics.series : [];
+  const rows = Array.isArray(systemMetrics.series) && systemMetrics.series.length ? systemMetrics.series : [...latestRows, ...fallbackRows];
   const values = rows.filter((metric) => {
     if (!patterns.length) return true;
     const text = `${metric.scope || ""} ${metric.target || ""} ${metric.name || ""} ${metric.key || ""}`.toLowerCase();
@@ -997,8 +998,8 @@ function renderClientDetail(client) {
   const openAlerts = currentAlerts.filter((alert) => alert.clientId === client.id && alert.status !== "resolved").length;
   const indexStatus = indexHealthStatus(client);
   const databaseSize = databaseSizeLabel(database);
-  const cpuSeries = metricSeriesValues(metrics, ["cpuPercent"]);
-  const memorySeries = metricSeriesValues(metrics, ["memoryPercent"]);
+  const cpuSeries = metricSeriesValues(metrics, ["cpuPercent", "cpu", "cpu_percent", "processorPercent"]);
+  const memorySeries = metricSeriesValues(metrics, ["memoryPercent", "memPercent", "memory", "memory_percent", "ramPercent"]);
 
   document.querySelector("#client-detail-title").textContent = client.name;
   document.querySelector("#client-detail-subtitle").textContent = `${client.reseller} - ${location}`;

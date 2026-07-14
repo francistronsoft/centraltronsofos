@@ -101,7 +101,7 @@ function compactEvent(event = {}) {
       status: payload.status,
       installationId: payload.installationId,
       tronsoftos: payload.tronsoftos,
-      database: payload.database,
+      database: payload.database ? compactDatabase(payload.database) : undefined,
       host: payload.host,
       backups: payload.backups ? compactBackups(payload.backups) : undefined
     }

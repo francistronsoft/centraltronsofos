@@ -165,10 +165,11 @@ function latestOpenAlertForClient(clientId) {
 }
 
 function databaseVersion(installation) {
-  return installation?.database?.versaoBanco
-    || installation?.database?.versao_banco
-    || installation?.database?.schemaVersion
-    || installation?.database?.version
+  const database = installation?.database || {};
+  return database.versaoBanco
+    || database.versao_banco
+    || database.schemaVersion
+    || database.schema_version
     || "-";
 }
 
@@ -773,6 +774,14 @@ function indexHealthStatus(client) {
   const missingCriticalTables = Array.isArray(health?.missingActiveTables) ? health.missingActiveTables : [];
   const active = health?.activeIndexes ?? health?.active ?? "-";
   const total = health?.totalIndexes ?? health?.total ?? "-";
+  const hasSummary = health && (
+    health.checkedAt
+    || health.collectedAt
+    || Number.isFinite(Number(total))
+    || Number.isFinite(Number(active))
+    || Number.isFinite(inactive)
+    || severity
+  );
   if (missingCriticalTables.length > 0 || missing > 0) {
     return {
       label: "Banco sem indice",
@@ -783,11 +792,7 @@ function indexHealthStatus(client) {
         : `${missing} indice(s) ausente(s)`
     };
   }
-  if (health && (severity === "ok" || severity === "info" || Number.isFinite(Number(total)))) {
-    const inactiveDetail = inactive > 0 ? `; ${inactive} inativo(s) nao criticos` : "";
-    return { label: "Indices OK", shortLabel: "OK", tone: "online", detail: `${active} / ${total} ativos${inactiveDetail}` };
-  }
-  if (severity === "critical" || severity === "offline" || alert?.severity === "critical") {
+  if (hasSummary && (severity === "critical" || severity === "offline" || alert?.severity === "critical")) {
     return {
       label: "Indice em atencao",
       shortLabel: "Atencao",
@@ -795,7 +800,7 @@ function indexHealthStatus(client) {
       detail: alert?.message || `${active} / ${total} ativos`
     };
   }
-  if (inactive > 0 || alert || severity === "warning") {
+  if (hasSummary && (inactive > 0 || alert || severity === "warning")) {
     return {
       label: "Indice em atencao",
       shortLabel: "Atencao",
@@ -803,7 +808,11 @@ function indexHealthStatus(client) {
       detail: inactive > 0 ? `${inactive} indice(s) inativo(s)` : (alert?.message || "alerta aberto")
     };
   }
-  if (health && (severity || Number.isFinite(Number(total)))) {
+  if (hasSummary && (severity === "ok" || severity === "info" || Number.isFinite(Number(total)))) {
+    const inactiveDetail = inactive > 0 ? `; ${inactive} inativo(s) nao criticos` : "";
+    return { label: "Indices OK", shortLabel: "OK", tone: "online", detail: `${active} / ${total} ativos${inactiveDetail}` };
+  }
+  if (hasSummary) {
     return { label: "Indices OK", shortLabel: "OK", tone: "online", detail: `${active} ativo(s)` };
   }
   return { label: "Nao informado", shortLabel: "Sem leitura", tone: "unknown", detail: "sem leitura do TronFire" };

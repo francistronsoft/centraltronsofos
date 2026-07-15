@@ -24,7 +24,12 @@ let geoLeafletMap = null;
 let geoLeafletLayer = null;
 let selectedClientId = "";
 let previousDetailView = "clients";
+let lastDataRefreshAt = null;
+let dashboardRefreshTimer = null;
+let refreshLabelTimer = null;
+let dataLoadInFlight = false;
 const clientsPageSize = 10;
+const dashboardRefreshIntervalMs = 30_000;
 const themeKey = "central-theme";
 
 const viewTitles = {
@@ -449,96 +454,121 @@ async function configureScopeControls() {
 }
 
 async function loadCentralData() {
-  const [dashboard, registeredClients, installations, alerts] = await Promise.all([
-    api(`/api/dashboard${querySuffix()}`),
-    api(`/api/clients${querySuffix()}`),
-    api(`/api/installations${querySuffix()}`),
-    api(`/api/alerts${querySuffix()}`)
-  ]);
-  currentInstallations = installations;
-  currentAlerts = alerts;
+  if (dataLoadInFlight) return;
+  dataLoadInFlight = true;
+  try {
+    const [dashboard, registeredClients, installations, alerts] = await Promise.all([
+      api(`/api/dashboard${querySuffix()}`),
+      api(`/api/clients${querySuffix()}`),
+      api(`/api/installations${querySuffix()}`),
+      api(`/api/alerts${querySuffix()}`)
+    ]);
+    currentInstallations = installations;
+    currentAlerts = alerts;
 
-  const installationsByClient = new Map();
-  installations.forEach((installation) => {
-    const items = installationsByClient.get(installation.client?.id) || [];
-    items.push(installation);
-    installationsByClient.set(installation.client?.id, items);
-  });
+    const installationsByClient = new Map();
+    installations.forEach((installation) => {
+      const items = installationsByClient.get(installation.client?.id) || [];
+      items.push(installation);
+      installationsByClient.set(installation.client?.id, items);
+    });
 
-  currentClients = registeredClients.flatMap((client) => {
-    const clientInstallations = installationsByClient.get(client.id) || [];
-    if (clientInstallations.length === 0) {
-      const latestToken = [...(client.pairingTokens || [])].reverse().find((token) => token.status === "active");
-      return [{
+    currentClients = registeredClients.flatMap((client) => {
+      const clientInstallations = installationsByClient.get(client.id) || [];
+      if (clientInstallations.length === 0) {
+        const latestToken = [...(client.pairingTokens || [])].reverse().find((token) => token.status === "active");
+        return [{
+          id: client.id,
+          detailId: client.id,
+          name: client.name,
+          reseller: client.reseller?.name || "Sem revenda",
+          rawClient: client,
+          installation: null,
+          city: client.city || "",
+          state: normalizeState(client.state),
+          environment: latestToken ? "Token gerado" : "Aguardando token",
+          version: "Aguardando pareamento",
+          database: "-",
+          databaseInfo: {},
+          host: {},
+          backups: {},
+          metrics: {},
+          cluster: {},
+          status: "unknown",
+          lastSeen: "-",
+          lastSeenAt: null,
+          diskPercent: null,
+          backup: { label: "--", tone: "unknown", detail: "sem dados" },
+          alert: latestOpenAlertForClient(client.id),
+          pairingToken: latestToken?.token || ""
+        }];
+      }
+
+      return clientInstallations.map((installation) => ({
         id: client.id,
-        detailId: client.id,
+        detailId: installation.installationId,
         name: client.name,
-        reseller: client.reseller?.name || "Sem revenda",
+        reseller: client.reseller?.name || installation.reseller?.name || "Sem revenda",
         rawClient: client,
-        installation: null,
+        installation,
         city: client.city || "",
         state: normalizeState(client.state),
-        environment: latestToken ? "Token gerado" : "Aguardando token",
-        version: "Aguardando pareamento",
-        database: "-",
-        databaseInfo: {},
-        host: {},
-        backups: {},
-        metrics: {},
-        cluster: {},
-        status: "unknown",
-        lastSeen: "-",
-        lastSeenAt: null,
-        diskPercent: null,
-        backup: { label: "--", tone: "unknown", detail: "sem dados" },
+        environment: installation.name,
+        version: installation.tronsoftos?.version || "-",
+        database: databaseVersion(installation),
+        databaseInfo: installation.database || {},
+        host: installation.host || {},
+        backups: installation.backups || {},
+        metrics: installation.metrics || {},
+        cluster: installation.cluster || {},
+        status: installation.status,
+        lastSeen: formatDateTime(installation.lastSeenAt),
+        lastSeenAt: installation.lastSeenAt || null,
+        diskPercent: diskPercent(installation),
+        backup: backupSummary(installation),
         alert: latestOpenAlertForClient(client.id),
-        pairingToken: latestToken?.token || ""
-      }];
-    }
+        pairingToken: ""
+      }));
+    });
 
-    return clientInstallations.map((installation) => ({
-      id: client.id,
-      detailId: installation.installationId,
-      name: client.name,
-      reseller: client.reseller?.name || installation.reseller?.name || "Sem revenda",
-      rawClient: client,
-      installation,
-      city: client.city || "",
-      state: normalizeState(client.state),
-      environment: installation.name,
-      version: installation.tronsoftos?.version || "-",
-      database: databaseVersion(installation),
-      databaseInfo: installation.database || {},
-      host: installation.host || {},
-      backups: installation.backups || {},
-      metrics: installation.metrics || {},
-      cluster: installation.cluster || {},
-      status: installation.status,
-      lastSeen: formatDateTime(installation.lastSeenAt),
-      lastSeenAt: installation.lastSeenAt || null,
-      diskPercent: diskPercent(installation),
-      backup: backupSummary(installation),
-      alert: latestOpenAlertForClient(client.id),
-      pairingToken: ""
+    currentAuthEvents = alerts.slice(-4).reverse().map((alert) => ({
+      title: alert.title,
+      detail: `${alert.severity} - ${alert.message || alert.code || "Sem detalhes"}`
     }));
-  });
 
-  currentAuthEvents = alerts.slice(-4).reverse().map((alert) => ({
-    title: alert.title,
-    detail: `${alert.severity} - ${alert.message || alert.code || "Sem detalhes"}`
-  }));
-
-  renderMetrics(dashboard);
-  renderClients(document.querySelector("#client-filter").value);
-  renderDashboardClients();
-  renderGeoMap();
-  renderAuthEvents();
-  renderAlerts();
-  await ensureActiveViewData();
-  if (activeView === "client-detail" && selectedClientId) {
-    const selected = currentClients.find((client) => client.detailId === selectedClientId || client.id === selectedClientId);
-    if (selected) renderClientDetail(selected);
+    renderMetrics(dashboard);
+    renderClients(document.querySelector("#client-filter").value);
+    renderDashboardClients();
+    renderGeoMap();
+    renderAuthEvents();
+    renderAlerts();
+    await ensureActiveViewData();
+    if (activeView === "client-detail" && selectedClientId) {
+      const selected = currentClients.find((client) => client.detailId === selectedClientId || client.id === selectedClientId);
+      if (selected) renderClientDetail(selected);
+    }
+    lastDataRefreshAt = new Date();
+    updateRefreshLabel();
+  } finally {
+    dataLoadInFlight = false;
   }
+}
+
+function updateRefreshLabel() {
+  const label = document.querySelector("#last-refresh-label");
+  if (!label) return;
+  label.textContent = lastDataRefreshAt
+    ? `Ultima atualizacao ${formatRelativeTime(lastDataRefreshAt.toISOString())}`
+    : "Aguardando atualizacao";
+}
+
+function startDashboardAutoRefresh() {
+  if (dashboardRefreshTimer) clearInterval(dashboardRefreshTimer);
+  if (refreshLabelTimer) clearInterval(refreshLabelTimer);
+  dashboardRefreshTimer = setInterval(() => {
+    if (currentUser) loadCentralData().catch(showError);
+  }, dashboardRefreshIntervalMs);
+  refreshLabelTimer = setInterval(updateRefreshLabel, 30_000);
 }
 
 async function loadUsersIfNeeded(force = false) {
@@ -722,7 +752,10 @@ function renderDashboardClients() {
             <small>versao_banco</small>
           </div>
           <div data-label="Indices"><span class="index-pill ${escapeHtml(indexStatus.tone)}">${escapeHtml(indexStatus.shortLabel || indexStatus.label)}</span></div>
-          <div data-label="Status"><span class="status ${escapeHtml(status)}">${escapeHtml(statusLabels[status] || status)}</span></div>
+          <div class="status-cell" data-label="Status">
+            <span class="status ${escapeHtml(status)}">${escapeHtml(statusLabels[status] || status)}</span>
+            <small>${escapeHtml(client.lastSeenAt ? `Ultima atualizacao ${formatRelativeTime(client.lastSeenAt)}` : "sem atualizacao")}</small>
+          </div>
           <div class="disk-cell" data-label="Disco">
             <strong>${disk === null ? "--" : `${disk}%`}</strong>
             <span class="disk-bar"><span class="${escapeHtml(diskTone)}" style="width:${disk === null ? 0 : Math.min(100, disk)}%"></span></span>
@@ -1722,4 +1755,5 @@ document.querySelector("#logout-button").innerHTML = iconLogout();
 applyTheme(localStorage.getItem(themeKey) || "light");
 setupCityOptions();
 updateUserRoleFields();
+startDashboardAutoRefresh();
 loadSession();

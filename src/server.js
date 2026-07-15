@@ -18,7 +18,7 @@ const googleDriveScope = "https://www.googleapis.com/auth/drive.file";
 const updateCommand = process.env.CENTRAL_UPDATE_COMMAND || "/usr/local/sbin/central-tronsoftos-update";
 const updateTimeoutMs = Number(process.env.CENTRAL_UPDATE_TIMEOUT_MS || 15 * 60 * 1000);
 const maxJobLogLength = 80_000;
-const offlineAfterMinutes = Number(process.env.CENTRAL_OFFLINE_AFTER_MINUTES || 15);
+const offlineAfterMinutes = Number(process.env.CENTRAL_OFFLINE_AFTER_MINUTES || 5);
 const maintenanceJobs = new Map();
 
 const contentTypes = {

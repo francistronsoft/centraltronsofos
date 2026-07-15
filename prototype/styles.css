@@ -98,6 +98,12 @@ body {
   white-space: nowrap;
 }
 
+.refresh-label {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 button,
 input {
   font: inherit;
@@ -1384,6 +1390,19 @@ tr:last-child td {
   background: var(--surface-strong);
 }
 
+.status-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.status-cell small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.2;
+}
+
 .empty-cell {
   color: var(--muted);
   text-align: center;
@@ -1627,10 +1646,12 @@ tr:last-child td {
   }
 
   .actions select,
+  .refresh-label,
   .user-badge {
     width: 100%;
   }
 
+  .refresh-label,
   .user-badge {
     white-space: normal;
   }

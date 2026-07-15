@@ -709,26 +709,26 @@ function renderDashboardClients() {
       const indexStatus = indexHealthStatus(client);
       return `
         <article class="monitor-row clickable-row" data-client-detail="${escapeHtml(client.detailId)}">
-          <div class="monitor-client">
+          <div class="monitor-client" data-label="Cliente">
             <span class="client-avatar">${escapeHtml(initials(client.name))}</span>
             <div>
               <strong>${escapeHtml(client.name)}</strong>
               <span>${escapeHtml(detail)}</span>
             </div>
           </div>
-          <div>${escapeHtml(client.reseller)}</div>
-          <div class="database-cell">
+          <div data-label="Revenda">${escapeHtml(client.reseller)}</div>
+          <div class="database-cell" data-label="Banco">
             <strong>${escapeHtml(client.database || "-")}</strong>
             <small>versao_banco</small>
           </div>
-          <div><span class="index-pill ${escapeHtml(indexStatus.tone)}">${escapeHtml(indexStatus.shortLabel || indexStatus.label)}</span></div>
-          <div><span class="status ${escapeHtml(status)}">${escapeHtml(statusLabels[status] || status)}</span></div>
-          <div class="disk-cell">
+          <div data-label="Indices"><span class="index-pill ${escapeHtml(indexStatus.tone)}">${escapeHtml(indexStatus.shortLabel || indexStatus.label)}</span></div>
+          <div data-label="Status"><span class="status ${escapeHtml(status)}">${escapeHtml(statusLabels[status] || status)}</span></div>
+          <div class="disk-cell" data-label="Disco">
             <strong>${disk === null ? "--" : `${disk}%`}</strong>
             <span class="disk-bar"><span class="${escapeHtml(diskTone)}" style="width:${disk === null ? 0 : Math.min(100, disk)}%"></span></span>
             ${disk === null ? `<small>sem dados</small>` : ""}
           </div>
-          <div><span class="backup-pill ${escapeHtml(client.backup.tone)}">${escapeHtml(client.backup.label)}</span></div>
+          <div data-label="Backup"><span class="backup-pill ${escapeHtml(client.backup.tone)}">${escapeHtml(client.backup.label)}</span></div>
         </article>
       `;
     })

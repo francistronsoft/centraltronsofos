@@ -41,6 +41,7 @@
 body {
   margin: 0;
   min-height: 100vh;
+  overflow-x: hidden;
   color: var(--text);
   background: var(--bg);
   font-family: Arial, Helvetica, sans-serif;
@@ -1480,6 +1481,7 @@ tr:last-child td {
 
   .sidebar {
     min-height: auto;
+    padding: 14px;
   }
 
   .topbar,
@@ -1491,8 +1493,34 @@ tr:last-child td {
     justify-content: flex-start;
   }
 
+  .brand {
+    margin-bottom: 14px;
+  }
+
   .nav {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    display: flex;
+    gap: 8px;
+    margin: 0 -14px;
+    overflow-x: auto;
+    padding: 0 14px 4px;
+    scrollbar-width: thin;
+  }
+
+  .nav-group {
+    display: contents;
+  }
+
+  .nav-group-title {
+    display: none;
+  }
+
+  .nav-item,
+  .nav-subitem {
+    flex: 0 0 auto;
+    width: auto;
+    min-height: 38px;
+    padding: 0 12px;
+    white-space: nowrap;
   }
 
   .metrics,
@@ -1504,13 +1532,41 @@ tr:last-child td {
   .gauge-grid,
   .alerts-detail,
   .monitor-head,
-  .monitor-row,
   .dashboard-grid,
   .oauth-grid,
   .map-layout,
   .alert-row,
   .client-form {
     grid-template-columns: 1fr;
+  }
+
+  .monitor-head {
+    display: none;
+  }
+
+  .monitor-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    align-items: start;
+  }
+
+  .monitor-row > div {
+    min-width: 0;
+  }
+
+  .monitor-row > div::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 4px;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .monitor-row .monitor-client::before {
+    margin-bottom: 6px;
   }
 
   .ops-panel-wide {
@@ -1527,10 +1583,6 @@ tr:last-child td {
 @media (max-width: 560px) {
   .app {
     padding: 18px;
-  }
-
-  .nav {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .topbar {
@@ -1556,10 +1608,59 @@ tr:last-child td {
   }
 
   .actions {
+    width: 100%;
     justify-content: flex-start;
   }
 
-  .nav {
-    grid-template-columns: 1fr 1fr;
+  .actions select,
+  .user-badge {
+    width: 100%;
+  }
+
+  .user-badge {
+    white-space: normal;
+  }
+
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .metric {
+    min-height: 86px;
+    padding: 14px;
+  }
+
+  .metric strong {
+    font-size: 24px;
+  }
+
+  .monitor-panel,
+  .panel {
+    padding: 14px;
+  }
+
+  .segmented {
+    width: 100%;
+  }
+
+  .segment {
+    flex: 1 1 0;
+    padding: 0 8px;
+  }
+
+  .monitor-row {
+    grid-template-columns: 1fr;
+  }
+
+  .disk-bar {
+    width: 100%;
+    max-width: 180px;
+  }
+
+  .table-wrap {
+    margin: 0 -14px;
+    border-left: 0;
+    border-right: 0;
+    border-radius: 0;
   }
 }

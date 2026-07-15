@@ -636,7 +636,6 @@ function backupSummary(installation) {
 function monitorStatus(client) {
   if (client.status === "offline") return "offline";
   const alert = latestOpenAlertForClient(client.id);
-  if (alert?.severity === "critical") return "offline";
   if (alert || client.status === "warning") return "warning";
   if (client.status === "online") return "online";
   return "unknown";

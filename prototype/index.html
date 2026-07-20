@@ -6,7 +6,7 @@
     <title>Central TronSoftOS</title>
     <link rel="icon" href="favicon.svg?v=central-c" type="image/svg+xml">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="styles.css?v=20260715-events-status-cleanup">
+    <link rel="stylesheet" href="styles.css?v=20260720-environments-inventory">
   </head>
   <body>
     <main id="login-view" class="login-view">
@@ -44,6 +44,7 @@
             <button class="nav-item nav-subitem" type="button" data-view-target="users">Usuarios</button>
             <button class="nav-item nav-subitem" type="button" data-view-target="clients">Clientes</button>
           </div>
+          <button class="nav-item" type="button" data-view-target="environments">Ambientes</button>
           <button class="nav-item" type="button" data-view-target="alerts">Alertas</button>
           <button class="nav-item" type="button" data-view-target="oauth">0auth</button>
           <button class="nav-item" type="button" data-view-target="account">Minha conta</button>
@@ -90,24 +91,24 @@
           <section class="monitor-panel">
             <div class="monitor-header">
               <div>
-                <h2>Instalacoes recentes</h2>
-                <p>Ultimos TronSoftOS pareados ou atualizados pela Central.</p>
+                <h2>Clientes monitorados</h2>
+                <p>Clientes cadastrados aguardando pareamento do TronSoftOS.</p>
               </div>
               <div class="segmented" aria-label="Filtro de status">
                 <button class="segment active" type="button" data-monitor-filter="all">Todos</button>
-                <button class="segment" type="button" data-monitor-filter="warning">Atencao</button>
-                <button class="segment" type="button" data-monitor-filter="offline">Offline</button>
+                <button class="segment" type="button" data-monitor-filter="token">Com token</button>
+                <button class="segment" type="button" data-monitor-filter="notoken">Sem token</button>
               </div>
             </div>
             <div class="monitor-table">
               <div class="monitor-head">
                 <span>Cliente</span>
                 <span>Revenda</span>
-                <span>Banco</span>
-                <span>Indices</span>
+                <span>Documento</span>
+                <span>Localizacao</span>
                 <span>Status</span>
-                <span>Disco</span>
-                <span>Backup</span>
+                <span>Token</span>
+                <span>Criado</span>
               </div>
               <div id="dashboard-clients-list" class="monitor-list"></div>
             </div>
@@ -223,32 +224,48 @@
             </form>
             <div id="pairing-result" class="pairing-result" hidden></div>
           </section>
+        </section>
 
+        <section class="view" data-view="environments" hidden>
           <div class="panel">
             <div class="panel-header">
               <div>
-                <h2>Clientes monitorados</h2>
-                <p>Carteira operacional por revenda.</p>
+                <h2>Ambientes</h2>
+                <p>Inventario dos TronSoftOS cadastrados, pareados ou pendentes.</p>
               </div>
-              <input id="client-filter" type="search" placeholder="Filtrar cliente">
+              <div class="filter-bar">
+                <input id="environment-filter" type="search" placeholder="Buscar por cliente, CNPJ ou ambiente">
+                <select id="environment-pairing-filter">
+                  <option value="">Todos</option>
+                  <option value="pending">Pendentes</option>
+                  <option value="paired">Pareados</option>
+                </select>
+                <select id="environment-ha-filter">
+                  <option value="">HA: todos</option>
+                  <option value="ha">Com HA</option>
+                  <option value="simple">Sem HA</option>
+                </select>
+              </div>
             </div>
             <div class="table-wrap">
               <table>
                 <thead>
                   <tr>
                     <th>Cliente</th>
+                    <th>CNPJ / Documento</th>
                     <th>Revenda</th>
+                    <th>Pareamento</th>
+                    <th>HA</th>
                     <th>Ambiente</th>
-                    <th>TronSoftOS / Banco</th>
-                    <th>Indices</th>
                     <th>Status</th>
+                    <th>Banco</th>
                     <th>Ultima comunicacao</th>
                   </tr>
                 </thead>
-                <tbody id="clients-table"></tbody>
+                <tbody id="environments-table"></tbody>
               </table>
             </div>
-            <div id="client-pagination" class="pagination"></div>
+            <div id="environment-pagination" class="pagination"></div>
           </div>
         </section>
 
@@ -316,6 +333,6 @@
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="app.js?v=20260720-recent-installations"></script>
+    <script src="app.js?v=20260720-environments-inventory"></script>
   </body>
 </html>

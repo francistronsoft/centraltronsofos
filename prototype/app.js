@@ -18,6 +18,7 @@ let oauthSummaryScope = "";
 let activeView = "dashboard";
 let monitorFilter = "all";
 let clientPage = 1;
+let environmentPage = 1;
 let maintenanceJobId = null;
 let maintenancePollTimer = null;
 let geoLeafletMap = null;
@@ -29,6 +30,7 @@ let dashboardRefreshTimer = null;
 let refreshLabelTimer = null;
 let dataLoadInFlight = false;
 const clientsPageSize = 10;
+const environmentPageSize = 10;
 const dashboardRefreshIntervalMs = 30_000;
 const themeKey = "central-theme";
 
@@ -37,6 +39,7 @@ const viewTitles = {
   resellers: "Revendas",
   users: "Usuarios",
   clients: "Clientes",
+  environments: "Ambientes",
   alerts: "Alertas",
   oauth: "0auth",
   account: "Minha conta",
@@ -351,6 +354,7 @@ function showView(view) {
 async function ensureActiveViewData() {
   if (activeView === "users") await loadUsersIfNeeded();
   if (activeView === "oauth") await loadOAuthSummaryIfNeeded();
+  if (activeView === "environments") renderEnvironments();
 }
 
 async function loadSession() {
@@ -499,7 +503,8 @@ async function loadCentralData() {
           diskPercent: null,
           backup: { label: "--", tone: "unknown", detail: "sem dados" },
           alert: latestOpenAlertForClient(client.id),
-          pairingToken: latestToken?.token || ""
+          pairingToken: latestToken?.token || "",
+          pairingTokenInfo: latestToken || null
         }];
       }
 
@@ -526,7 +531,8 @@ async function loadCentralData() {
         diskPercent: diskPercent(installation),
         backup: backupSummary(installation),
         alert: latestOpenAlertForClient(client.id),
-        pairingToken: ""
+        pairingToken: "",
+        pairingTokenInfo: null
       }));
     });
 
@@ -537,8 +543,9 @@ async function loadCentralData() {
     }));
 
     renderMetrics(dashboard);
-    renderClients(document.querySelector("#client-filter").value);
+    renderClients(document.querySelector("#client-filter")?.value || "");
     renderDashboardClients();
+    renderEnvironments();
     renderGeoMap();
     renderAuthEvents();
     renderAlerts();
@@ -641,8 +648,35 @@ function monitorStatus(client) {
   return "unknown";
 }
 
+function attachTokenCopyButtons(root) {
+  root.querySelectorAll("[data-copy-token]").forEach((button) => {
+    button.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      const label = button.textContent;
+      try {
+        const copied = await copyTextToClipboard(button.dataset.copyToken);
+        button.textContent = copied ? "Copiado" : "Falhou";
+      } catch {
+        button.textContent = "Falhou";
+      }
+      setTimeout(() => {
+        button.textContent = label;
+      }, 1400);
+    });
+  });
+}
+
+function environmentHaStatus(client) {
+  const cluster = client.installation?.cluster || client.cluster || {};
+  const mode = String(cluster.mode || cluster.status?.mode || "").toLowerCase();
+  const enabled = cluster.enabled === true || cluster.haEnabled === true || cluster.keepalived?.enabled === true;
+  const hasStandby = Boolean(cluster.standby || cluster.peer || cluster.nodes?.length > 1);
+  return mode === "ha" || enabled || hasStandby;
+}
+
 function renderClients(filter = "") {
   const table = document.querySelector("#clients-table");
+  if (!table) return;
   const normalizedFilter = filter.trim().toLowerCase();
   const visibleClients = currentClients.filter((client) => {
     const searchable = `${client.name} ${client.reseller} ${client.environment} ${client.database || ""}`.toLowerCase();
@@ -680,21 +714,7 @@ function renderClients(filter = "") {
   table.querySelectorAll("[data-client-detail]").forEach((row) => {
     row.addEventListener("click", () => openClientDetail(row.dataset.clientDetail, "clients"));
   });
-  table.querySelectorAll("[data-copy-token]").forEach((button) => {
-    button.addEventListener("click", async (event) => {
-      event.stopPropagation();
-      const label = button.textContent;
-      try {
-        const copied = await copyTextToClipboard(button.dataset.copyToken);
-        button.textContent = copied ? "Copiado" : "Falhou";
-      } catch {
-        button.textContent = "Falhou";
-      }
-      setTimeout(() => {
-        button.textContent = label;
-      }, 1400);
-    });
-  });
+  attachTokenCopyButtons(table);
 }
 
 function renderClientPagination(total, totalPages) {
@@ -714,7 +734,7 @@ function renderClientPagination(total, totalPages) {
   pagination.querySelectorAll("[data-client-page]").forEach((button) => {
     button.addEventListener("click", () => {
       clientPage += button.dataset.clientPage === "next" ? 1 : -1;
-      renderClients(document.querySelector("#client-filter").value);
+      renderClients(document.querySelector("#client-filter")?.value || "");
     });
   });
 }
@@ -723,54 +743,146 @@ function renderDashboardClients() {
   const list = document.querySelector("#dashboard-clients-list");
   if (!list) return;
   const visibleClients = currentClients
-    .filter((client) => client.installation)
+    .filter((client) => !client.installation)
     .filter((client) => {
-      const status = monitorStatus(client);
-      if (monitorFilter === "warning") return status === "warning";
-      if (monitorFilter === "offline") return status === "offline";
+      const hasToken = Boolean(client.pairingToken);
+      if (monitorFilter === "token") return hasToken;
+      if (monitorFilter === "notoken") return !hasToken;
       return true;
     })
-    .sort((left, right) => String(right.lastSeenAt || "").localeCompare(String(left.lastSeenAt || "")))
+    .sort((left, right) => String(right.pairingTokenInfo?.createdAt || right.rawClient?.createdAt || "").localeCompare(String(left.pairingTokenInfo?.createdAt || left.rawClient?.createdAt || "")))
     .slice(0, 5);
 
   list.innerHTML = visibleClients
     .map((client) => {
-      const status = monitorStatus(client);
-      const disk = client.diskPercent;
-      const diskTone = disk === null ? "unknown" : disk >= 90 ? "offline" : disk >= 75 ? "warning" : "online";
-      const detail = client.alert?.message || client.alert?.title || "";
-      const indexStatus = indexHealthStatus(client);
+      const location = [client.city, client.state].filter(Boolean).join(" / ") || "-";
+      const document = client.rawClient?.document || "-";
+      const createdAt = client.pairingTokenInfo?.createdAt || client.rawClient?.createdAt || null;
+      const token = client.pairingToken
+        ? `<span class="token-copy-wrap"><span class="token-cell">${escapeHtml(client.pairingToken)}</span><button class="token-copy-button" type="button" data-copy-token="${escapeHtml(client.pairingToken)}" title="Copiar token">Copiar</button></span>`
+        : `<span class="muted-cell">sem token</span>`;
       return `
         <article class="monitor-row clickable-row" data-client-detail="${escapeHtml(client.detailId)}">
           <div class="monitor-client" data-label="Cliente">
             <span class="client-avatar">${escapeHtml(initials(client.name))}</span>
             <div>
               <strong>${escapeHtml(client.name)}</strong>
-              ${detail ? `<span>${escapeHtml(detail)}</span>` : ""}
+              <span>${escapeHtml(client.environment)}</span>
             </div>
           </div>
           <div data-label="Revenda">${escapeHtml(client.reseller)}</div>
-          <div class="database-cell" data-label="Banco">
-            <strong>${escapeHtml(client.database || "-")}</strong>
-            <small>versao_banco</small>
-          </div>
-          <div data-label="Indices"><span class="index-pill ${escapeHtml(indexStatus.tone)}">${escapeHtml(indexStatus.shortLabel || indexStatus.label)}</span></div>
-          <div class="status-cell" data-label="Status">
-            <span class="status ${escapeHtml(status)}">${escapeHtml(statusLabels[status] || status)}</span>
-            <small>${escapeHtml(client.lastSeenAt ? `Ultima atualizacao ${formatRelativeTime(client.lastSeenAt)}` : "sem atualizacao")}</small>
-          </div>
-          <div class="disk-cell" data-label="Disco">
-            <strong>${disk === null ? "--" : `${disk}%`}</strong>
-            <span class="disk-bar"><span class="${escapeHtml(diskTone)}" style="width:${disk === null ? 0 : Math.min(100, disk)}%"></span></span>
-            ${disk === null ? `<small>sem dados</small>` : ""}
-          </div>
-          <div data-label="Backup"><span class="backup-pill ${escapeHtml(client.backup.tone)}">${escapeHtml(client.backup.label)}</span></div>
+          <div data-label="Documento">${escapeHtml(document)}</div>
+          <div data-label="Localizacao">${escapeHtml(location)}</div>
+          <div data-label="Status"><span class="status unknown">Pendente</span></div>
+          <div data-label="Token">${token}</div>
+          <div data-label="Criado">${escapeHtml(formatDateTime(createdAt))}</div>
         </article>
       `;
     })
-    .join("") || `<div class="empty-monitor">Nenhuma instalacao pareada neste filtro.</div>`;
+    .join("") || `<div class="empty-monitor">Nenhum cliente pendente de pareamento neste filtro.</div>`;
   list.querySelectorAll("[data-client-detail]").forEach((row) => {
     row.addEventListener("click", () => openClientDetail(row.dataset.clientDetail, "dashboard"));
+  });
+  attachTokenCopyButtons(list);
+}
+
+function renderEnvironments() {
+  const table = document.querySelector("#environments-table");
+  if (!table) return;
+  const textFilter = (document.querySelector("#environment-filter")?.value || "").trim().toLowerCase();
+  const pairingFilter = document.querySelector("#environment-pairing-filter")?.value || "";
+  const haFilter = document.querySelector("#environment-ha-filter")?.value || "";
+
+  const visible = currentClients
+    .filter((client) => {
+      const paired = Boolean(client.installation);
+      const hasHa = environmentHaStatus(client);
+      const documentValue = client.rawClient?.document || "";
+      const installationId = client.installation?.installationId || "";
+      const searchable = [
+        client.name,
+        documentValue,
+        client.reseller,
+        client.environment,
+        client.database,
+        client.host?.hostname,
+        client.host?.ip,
+        installationId
+      ].filter(Boolean).join(" ").toLowerCase();
+      if (textFilter && !searchable.includes(textFilter)) return false;
+      if (pairingFilter === "pending" && paired) return false;
+      if (pairingFilter === "paired" && !paired) return false;
+      if (haFilter === "ha" && !hasHa) return false;
+      if (haFilter === "simple" && hasHa) return false;
+      return true;
+    })
+    .sort((left, right) => {
+      const leftDate = left.lastSeenAt || left.pairingTokenInfo?.createdAt || left.rawClient?.createdAt || "";
+      const rightDate = right.lastSeenAt || right.pairingTokenInfo?.createdAt || right.rawClient?.createdAt || "";
+      return String(rightDate).localeCompare(String(leftDate));
+    });
+
+  const totalPages = Math.max(1, Math.ceil(visible.length / environmentPageSize));
+  environmentPage = Math.min(environmentPage, totalPages);
+  const pageItems = visible.slice((environmentPage - 1) * environmentPageSize, environmentPage * environmentPageSize);
+
+  table.innerHTML = pageItems
+    .map((client) => {
+      const paired = Boolean(client.installation);
+      const hasHa = environmentHaStatus(client);
+      const status = paired ? monitorStatus(client) : "unknown";
+      const documentValue = client.rawClient?.document || "-";
+      const pairing = paired
+        ? `<span class="status online">Pareado</span><br><span class="muted-cell">${escapeHtml(client.installation?.installationId || "")}</span>`
+        : `<span class="status unknown">Pendente</span>${client.pairingToken ? `<br><span class="token-copy-wrap"><span class="token-cell">${escapeHtml(client.pairingToken)}</span><button class="token-copy-button" type="button" data-copy-token="${escapeHtml(client.pairingToken)}" title="Copiar token">Copiar</button></span>` : ""}`;
+      const database = paired ? databaseVersion(client.installation) : "-";
+      const lastSeen = paired ? formatDateTime(client.lastSeenAt) : formatDateTime(client.pairingTokenInfo?.createdAt || client.rawClient?.createdAt);
+      return `
+        <tr class="clickable-row" data-client-detail="${escapeHtml(client.detailId)}">
+          <td>${escapeHtml(client.name)}<br><span class="muted-cell">${escapeHtml([client.city, client.state].filter(Boolean).join(" / ") || "-")}</span></td>
+          <td>${escapeHtml(documentValue)}</td>
+          <td>${escapeHtml(client.reseller)}</td>
+          <td>${pairing}</td>
+          <td><span class="index-pill ${hasHa ? "online" : "unknown"}">${hasHa ? "Com HA" : "Sem HA"}</span></td>
+          <td>${escapeHtml(client.environment || "Ambiente principal")}</td>
+          <td><span class="status ${escapeHtml(status)}">${escapeHtml(paired ? (statusLabels[status] || status) : "Pendente")}</span></td>
+          <td>${escapeHtml(database || "-")}</td>
+          <td>${escapeHtml(lastSeen)}</td>
+        </tr>
+      `;
+    })
+    .join("") || `
+      <tr>
+        <td colspan="9" class="empty-cell">Nenhum ambiente encontrado neste filtro.</td>
+      </tr>
+    `;
+
+  renderEnvironmentPagination(visible.length, totalPages);
+  table.querySelectorAll("[data-client-detail]").forEach((row) => {
+    row.addEventListener("click", () => openClientDetail(row.dataset.clientDetail, "environments"));
+  });
+  attachTokenCopyButtons(table);
+}
+
+function renderEnvironmentPagination(total, totalPages) {
+  const pagination = document.querySelector("#environment-pagination");
+  if (!pagination) return;
+  if (total <= environmentPageSize) {
+    pagination.innerHTML = "";
+    return;
+  }
+  const start = (environmentPage - 1) * environmentPageSize + 1;
+  const end = Math.min(total, environmentPage * environmentPageSize);
+  pagination.innerHTML = `
+    <span>${start}-${end} de ${total}</span>
+    <button type="button" data-environment-page="prev" ${environmentPage <= 1 ? "disabled" : ""}>Anterior</button>
+    <button type="button" data-environment-page="next" ${environmentPage >= totalPages ? "disabled" : ""}>Proxima</button>
+  `;
+  pagination.querySelectorAll("[data-environment-page]").forEach((button) => {
+    button.addEventListener("click", () => {
+      environmentPage += button.dataset.environmentPage === "next" ? 1 : -1;
+      renderEnvironments();
+    });
   });
 }
 
@@ -1742,9 +1854,19 @@ document.querySelector("#reseller-filter").addEventListener("change", () => {
   loadCentralData();
 });
 document.querySelector("#alert-filter").addEventListener("change", renderAlerts);
-document.querySelector("#client-filter").addEventListener("input", (event) => {
+document.querySelector("#client-filter")?.addEventListener("input", (event) => {
   clientPage = 1;
   renderClients(event.target.value);
+});
+["#environment-filter", "#environment-pairing-filter", "#environment-ha-filter"].forEach((selector) => {
+  document.querySelector(selector)?.addEventListener("input", () => {
+    environmentPage = 1;
+    renderEnvironments();
+  });
+  document.querySelector(selector)?.addEventListener("change", () => {
+    environmentPage = 1;
+    renderEnvironments();
+  });
 });
 document.querySelector("#client-form").addEventListener("submit", createClient);
 document.querySelector("#reseller-form").addEventListener("submit", createReseller);

@@ -622,6 +622,27 @@ input[type="search"] {
   color: var(--text);
 }
 
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.filter-bar input,
+.filter-bar select {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0 12px;
+  color: var(--text);
+  background: var(--surface);
+}
+
+.filter-bar input {
+  width: min(340px, 100%);
+}
+
 .client-form {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));

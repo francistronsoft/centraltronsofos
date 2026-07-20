@@ -352,6 +352,7 @@ function showView(view) {
 async function ensureActiveViewData() {
   if (activeView === "users") await loadUsersIfNeeded();
   if (activeView === "oauth") await loadOAuthSummaryIfNeeded();
+  if (activeView === "installations") renderInstallations();
 }
 
 async function loadSession() {
@@ -540,6 +541,7 @@ async function loadCentralData() {
     renderMetrics(dashboard);
     renderClients(document.querySelector("#client-filter").value);
     renderDashboardClients();
+    renderInstallations();
     renderGeoMap();
     renderAuthEvents();
     renderAlerts();
@@ -695,6 +697,56 @@ function renderClients(filter = "") {
         button.textContent = label;
       }, 1400);
     });
+  });
+}
+
+function renderInstallations() {
+  const table = document.querySelector("#installations-table");
+  if (!table) return;
+
+  const rows = [...currentInstallations].sort((left, right) => {
+    return String(right.lastSeenAt || "").localeCompare(String(left.lastSeenAt || ""));
+  });
+
+  table.innerHTML = rows
+    .map((installation) => {
+      const client = installation.client || {};
+      const reseller = installation.reseller || {};
+      const status = installation.status || "unknown";
+      const host = installation.host || {};
+      const hostLabel = [host.hostname, host.ip].filter(Boolean).join(" / ") || "-";
+      const database = databaseVersion(installation);
+      const databaseDetail = [
+        installation.database?.engine,
+        installation.database?.databaseAlias || installation.database?.databaseName
+      ].filter(Boolean).join(" - ");
+      return `
+        <tr class="clickable-row" data-client-detail="${escapeHtml(installation.installationId || client.id || "")}">
+          <td>
+            ${escapeHtml(client.name || "Cliente nao identificado")}
+            <br><span class="muted-cell">${escapeHtml([client.city, normalizeState(client.state)].filter(Boolean).join(" / ") || "-")}</span>
+          </td>
+          <td>${escapeHtml(reseller.name || "Sem revenda")}</td>
+          <td>${escapeHtml(installation.name || "Ambiente principal")}</td>
+          <td><span class="token-cell">${escapeHtml(installation.installationId || "-")}</span></td>
+          <td><span class="status ${escapeHtml(status)}">${escapeHtml(statusLabels[status] || status)}</span></td>
+          <td>${escapeHtml(hostLabel)}</td>
+          <td>
+            <strong>${escapeHtml(database || "-")}</strong>
+            ${databaseDetail ? `<br><span class="muted-cell">${escapeHtml(databaseDetail)}</span>` : ""}
+          </td>
+          <td>${escapeHtml(formatDateTime(installation.lastSeenAt))}</td>
+        </tr>
+      `;
+    })
+    .join("") || `
+      <tr>
+        <td colspan="8" class="empty-cell">Nenhum ambiente pareado neste escopo.</td>
+      </tr>
+    `;
+
+  table.querySelectorAll("[data-client-detail]").forEach((row) => {
+    row.addEventListener("click", () => openClientDetail(row.dataset.clientDetail, "installations"));
   });
 }
 

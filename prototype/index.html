@@ -258,8 +258,25 @@
             <div class="panel-header compact">
               <div>
                 <h2>Ambientes</h2>
-                <p>Os ambientes pareados serao organizados aqui.</p>
+                <p>TronSoftOS pareados com a Central.</p>
               </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Cliente</th>
+                    <th>Revenda</th>
+                    <th>Ambiente</th>
+                    <th>Installation ID</th>
+                    <th>Status</th>
+                    <th>Host / IP</th>
+                    <th>Banco</th>
+                    <th>Ultima comunicacao</th>
+                  </tr>
+                </thead>
+                <tbody id="installations-table"></tbody>
+              </table>
             </div>
           </div>
         </section>
@@ -328,6 +345,6 @@
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="app.js?v=20260715-events-status-cleanup"></script>
+    <script src="app.js?v=20260720-installations-list"></script>
   </body>
 </html>

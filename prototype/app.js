@@ -37,7 +37,6 @@ const viewTitles = {
   resellers: "Revendas",
   users: "Usuarios",
   clients: "Clientes",
-  installations: "Ambientes",
   alerts: "Alertas",
   oauth: "0auth",
   account: "Minha conta",
@@ -352,7 +351,6 @@ function showView(view) {
 async function ensureActiveViewData() {
   if (activeView === "users") await loadUsersIfNeeded();
   if (activeView === "oauth") await loadOAuthSummaryIfNeeded();
-  if (activeView === "installations") renderInstallations();
 }
 
 async function loadSession() {
@@ -541,7 +539,6 @@ async function loadCentralData() {
     renderMetrics(dashboard);
     renderClients(document.querySelector("#client-filter").value);
     renderDashboardClients();
-    renderInstallations();
     renderGeoMap();
     renderAuthEvents();
     renderAlerts();
@@ -700,56 +697,6 @@ function renderClients(filter = "") {
   });
 }
 
-function renderInstallations() {
-  const table = document.querySelector("#installations-table");
-  if (!table) return;
-
-  const rows = [...currentInstallations].sort((left, right) => {
-    return String(right.lastSeenAt || "").localeCompare(String(left.lastSeenAt || ""));
-  });
-
-  table.innerHTML = rows
-    .map((installation) => {
-      const client = installation.client || {};
-      const reseller = installation.reseller || {};
-      const status = installation.status || "unknown";
-      const host = installation.host || {};
-      const hostLabel = [host.hostname, host.ip].filter(Boolean).join(" / ") || "-";
-      const database = databaseVersion(installation);
-      const databaseDetail = [
-        installation.database?.engine,
-        installation.database?.databaseAlias || installation.database?.databaseName
-      ].filter(Boolean).join(" - ");
-      return `
-        <tr class="clickable-row" data-client-detail="${escapeHtml(installation.installationId || client.id || "")}">
-          <td>
-            ${escapeHtml(client.name || "Cliente nao identificado")}
-            <br><span class="muted-cell">${escapeHtml([client.city, normalizeState(client.state)].filter(Boolean).join(" / ") || "-")}</span>
-          </td>
-          <td>${escapeHtml(reseller.name || "Sem revenda")}</td>
-          <td>${escapeHtml(installation.name || "Ambiente principal")}</td>
-          <td><span class="token-cell">${escapeHtml(installation.installationId || "-")}</span></td>
-          <td><span class="status ${escapeHtml(status)}">${escapeHtml(statusLabels[status] || status)}</span></td>
-          <td>${escapeHtml(hostLabel)}</td>
-          <td>
-            <strong>${escapeHtml(database || "-")}</strong>
-            ${databaseDetail ? `<br><span class="muted-cell">${escapeHtml(databaseDetail)}</span>` : ""}
-          </td>
-          <td>${escapeHtml(formatDateTime(installation.lastSeenAt))}</td>
-        </tr>
-      `;
-    })
-    .join("") || `
-      <tr>
-        <td colspan="8" class="empty-cell">Nenhum ambiente pareado neste escopo.</td>
-      </tr>
-    `;
-
-  table.querySelectorAll("[data-client-detail]").forEach((row) => {
-    row.addEventListener("click", () => openClientDetail(row.dataset.clientDetail, "installations"));
-  });
-}
-
 function renderClientPagination(total, totalPages) {
   const pagination = document.querySelector("#client-pagination");
   if (!pagination) return;
@@ -775,12 +722,16 @@ function renderClientPagination(total, totalPages) {
 function renderDashboardClients() {
   const list = document.querySelector("#dashboard-clients-list");
   if (!list) return;
-  const visibleClients = currentClients.filter((client) => {
-    const status = monitorStatus(client);
-    if (monitorFilter === "warning") return status === "warning";
-    if (monitorFilter === "offline") return status === "offline";
-    return true;
-  }).slice(0, 5);
+  const visibleClients = currentClients
+    .filter((client) => client.installation)
+    .filter((client) => {
+      const status = monitorStatus(client);
+      if (monitorFilter === "warning") return status === "warning";
+      if (monitorFilter === "offline") return status === "offline";
+      return true;
+    })
+    .sort((left, right) => String(right.lastSeenAt || "").localeCompare(String(left.lastSeenAt || "")))
+    .slice(0, 5);
 
   list.innerHTML = visibleClients
     .map((client) => {
@@ -817,7 +768,7 @@ function renderDashboardClients() {
         </article>
       `;
     })
-    .join("") || `<div class="empty-monitor">Nenhum cliente neste filtro.</div>`;
+    .join("") || `<div class="empty-monitor">Nenhuma instalacao pareada neste filtro.</div>`;
   list.querySelectorAll("[data-client-detail]").forEach((row) => {
     row.addEventListener("click", () => openClientDetail(row.dataset.clientDetail, "dashboard"));
   });

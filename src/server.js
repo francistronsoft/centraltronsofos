@@ -449,14 +449,17 @@ function userPasswordEmail(user, password) {
 
 function findOrCreateClient(db, reseller, customerPayload) {
   const customerName = requireText(customerPayload?.name, "customer.name");
+  const document = String(customerPayload?.document || "").trim();
   const key = clientKey(customerPayload);
   const existing = db.clients.find((client) => {
-    return client.resellerId === reseller.id && (client.document === customerPayload?.document || client.key === key);
+    if (client.resellerId !== reseller.id) return false;
+    if (document && client.document === document) return true;
+    return Boolean(key && client.key === key);
   });
 
   if (existing) {
     existing.name = customerName;
-    existing.document = customerPayload?.document || "";
+    existing.document = document || existing.document || "";
     existing.city = customerPayload?.city || "";
     existing.state = customerPayload?.state || "";
     existing.status = "active";
@@ -469,7 +472,7 @@ function findOrCreateClient(db, reseller, customerPayload) {
     resellerId: reseller.id,
     key,
     name: customerName,
-    document: customerPayload?.document || "",
+    document,
     city: customerPayload?.city || "",
     state: customerPayload?.state || "",
     status: "active",
@@ -483,6 +486,9 @@ function findOrCreateClient(db, reseller, customerPayload) {
 function upsertInstallation(db, client, payload) {
   const installationId = payload.installationId?.trim() || randomUUID();
   const existing = db.installations.find((installation) => installation.installationId === installationId);
+  if (existing && existing.clientId !== client.id) {
+    throw httpError(409, "Esta instalacao TronSoftOS ja esta pareada com outro cliente.");
+  }
   const token = existing?.token || randomUUID();
 
   const installation = {
@@ -536,6 +542,9 @@ function upsertInstallation(db, client, payload) {
 function upsertInstallationForClient(db, client, payload) {
   const installationId = payload.installationId?.trim() || randomUUID();
   const existing = db.installations.find((installation) => installation.installationId === installationId);
+  if (existing && existing.clientId !== client.id) {
+    throw httpError(409, "Esta instalacao TronSoftOS ja esta pareada com outro cliente.");
+  }
   const token = existing?.token || randomUUID();
 
   const installation = {

@@ -761,7 +761,8 @@ function diskPercent(installation) {
 
 function backupSummary(installation) {
   const backups = installation?.backups || {};
-  const latest = backups.latestBackupAt
+  const latest = backups.latestValidatedBackupAt
+    || backups.latestBackupAt
     || backups.latestUploadedAt
     || backups.latestFile?.modifiedAt
     || backups.recentFiles?.[0]?.modifiedAt
@@ -773,8 +774,8 @@ function backupSummary(installation) {
 
   const minutes = Math.max(0, Math.round((Date.now() - new Date(latest).getTime()) / 60000));
   if (!Number.isFinite(minutes)) return { label: "--", tone: "unknown", detail: "sem dados" };
-  if (minutes <= 360) return { label: `Backup ${backupAgeLabel(minutes)}`, tone: "online", detail: formatRelativeTime(latest) };
-  return { label: `Atrasado ${backupAgeLabel(minutes)}`, tone: "warning", detail: formatRelativeTime(latest) };
+  if (minutes <= 360) return { label: `Ultimo backup ${backupAgeLabel(minutes)}`, tone: "online", detail: formatDateTime(latest) };
+  return { label: `Backup atrasado ${backupAgeLabel(minutes)}`, tone: "warning", detail: formatDateTime(latest) };
 }
 
 function monitorStatus(client) {

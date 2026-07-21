@@ -709,6 +709,38 @@ p {
   background: #ffdfe1;
 }
 
+.temperature-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  min-height: 30px;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.temperature-pill.online {
+  color: #07633d;
+  background: #d9f7e7;
+}
+
+.temperature-pill.warning {
+  color: #7a4100;
+  background: #fff0bd;
+}
+
+.temperature-pill.offline {
+  color: #951f25;
+  background: #ffdfe1;
+}
+
+.temperature-pill.unknown {
+  color: #42505d;
+  background: #e9eef3;
+}
+
 .client-avatar {
   display: grid;
   flex: 0 0 auto;

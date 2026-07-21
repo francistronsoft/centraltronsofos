@@ -632,11 +632,13 @@ function latestSystemMetricRow(payload = {}, metrics = {}) {
   const cpuPercent = row.cpuPercent ?? systemMetrics.cpuPercent ?? metrics.cpuPercent ?? systemMetrics.cpu?.percent;
   const memoryPercent = row.memoryPercent ?? systemMetrics.memoryPercent ?? metrics.memoryPercent ?? systemMetrics.memory?.usedPercent;
   const diskUsedPercent = row.diskUsedPercent ?? systemMetrics.diskUsedPercent ?? metrics.diskUsedPercent ?? systemMetrics.disk?.percentUsed;
+  const temperatureCelsius = row.temperatureCelsius ?? systemMetrics.temperatureCelsius ?? metrics.temperatureCelsius ?? systemMetrics.host?.temperatureCelsius;
   const hostUptimeSeconds = row.hostUptimeSeconds ?? systemMetrics.hostUptimeSeconds ?? metrics.hostUptimeSeconds ?? payload.host?.uptimeSeconds;
   const normalized = { collectedAt };
   if (Number.isFinite(Number(cpuPercent))) normalized.cpuPercent = Number(cpuPercent);
   if (Number.isFinite(Number(memoryPercent))) normalized.memoryPercent = Number(memoryPercent);
   if (Number.isFinite(Number(diskUsedPercent))) normalized.diskUsedPercent = Number(diskUsedPercent);
+  if (Number.isFinite(Number(temperatureCelsius))) normalized.temperatureCelsius = Number(temperatureCelsius);
   if (Number.isFinite(Number(hostUptimeSeconds))) normalized.hostUptimeSeconds = Number(hostUptimeSeconds);
   return Object.keys(normalized).length > 1 ? normalized : null;
 }
@@ -662,6 +664,7 @@ function incomingMetrics(payload = {}, previousMetrics = {}) {
     next.cpuPercent = row.cpuPercent ?? next.cpuPercent ?? previousMetrics.cpuPercent;
     next.memoryPercent = row.memoryPercent ?? next.memoryPercent ?? previousMetrics.memoryPercent;
     next.diskUsedPercent = row.diskUsedPercent ?? next.diskUsedPercent ?? previousMetrics.diskUsedPercent;
+    next.temperatureCelsius = row.temperatureCelsius ?? next.temperatureCelsius ?? previousMetrics.temperatureCelsius;
   }
   return next;
 }

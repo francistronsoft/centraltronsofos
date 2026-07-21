@@ -774,6 +774,30 @@ function diskPercent(installation) {
   ]);
 }
 
+function temperatureValue(client) {
+  const metrics = client?.metrics || {};
+  const system = metrics.systemMetrics || {};
+  const latest = Array.isArray(system.latest) ? system.latest[0] : system.latest;
+  const latestSeries = Array.isArray(system.series) ? system.series.at(-1) : null;
+  const value = latest?.temperatureCelsius
+    ?? latestSeries?.temperatureCelsius
+    ?? system.temperatureCelsius
+    ?? metrics.temperatureCelsius
+    ?? metrics.host?.temperatureCelsius
+    ?? null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function temperatureStatus(client) {
+  const value = temperatureValue(client);
+  if (value === null) return { label: "-", tone: "unknown", detail: "sem sensor" };
+  const label = `${value.toFixed(1)} C`;
+  if (value >= 85) return { label, tone: "offline", detail: "critica" };
+  if (value >= 70) return { label, tone: "warning", detail: "atencao" };
+  return { label, tone: "online", detail: "ok" };
+}
+
 function backupSummary(installation) {
   const backups = installation?.backups || {};
   const latest = backups.latestValidatedBackupAt
@@ -989,6 +1013,7 @@ function renderEnvironments() {
         ? `<span class="status online">Pareado</span><br><span class="muted-cell">${escapeHtml(client.installation?.installationId || "")}</span>`
         : `<span class="status unknown">Pendente</span>${client.pairingToken ? `<br>${renderTokenCopy(client.pairingToken)}` : ""}`;
       const database = paired ? databaseVersion(client.installation) : "-";
+      const temperature = paired ? temperatureStatus(client) : { label: "-", tone: "unknown", detail: "aguardando" };
       const lastSeen = paired ? formatDateTime(client.lastSeenAt) : formatDateTime(client.pairingTokenInfo?.createdAt || client.rawClient?.createdAt);
       return `
         <tr class="clickable-row" data-client-detail="${escapeHtml(client.detailId)}">
@@ -999,6 +1024,7 @@ function renderEnvironments() {
           <td><span class="index-pill ${hasHa ? "online" : "unknown"}">${hasHa ? "Com HA" : "Sem HA"}</span></td>
           <td>${escapeHtml(client.environment || "Ambiente principal")}</td>
           <td><span class="status ${escapeHtml(status)}">${escapeHtml(paired ? (statusLabels[status] || status) : "Pendente")}</span></td>
+          <td><span class="temperature-pill ${escapeHtml(temperature.tone)}">${escapeHtml(temperature.label)}</span><br><span class="muted-cell">${escapeHtml(temperature.detail)}</span></td>
           <td>${escapeHtml(database || "-")}</td>
           <td>${escapeHtml(lastSeen)}</td>
         </tr>
@@ -1006,7 +1032,7 @@ function renderEnvironments() {
     })
     .join("") || `
       <tr>
-        <td colspan="9" class="empty-cell">Nenhum ambiente encontrado neste filtro.</td>
+        <td colspan="10" class="empty-cell">Nenhum ambiente encontrado neste filtro.</td>
       </tr>
     `;
 

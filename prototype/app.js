@@ -1754,9 +1754,11 @@ function renderAuthEvents() {
     .map(
       (event, index) => {
         const hasMore = String(event.detail || "").length > String(event.summary || event.detail || "").length;
+        const fullTitle = String(event.title || "Evento");
+        const shortTitle = compactText(fullTitle, 72);
         return `
         <article class="event">
-          <strong>${event.title}</strong>
+          <strong title="${escapeHtml(fullTitle)}">${escapeHtml(shortTitle)}</strong>
           ${event.occurredAt ? `<small>${escapeHtml(formatDateTime(event.occurredAt))}</small>` : ""}
           <span class="event-summary">${escapeHtml(event.summary || event.detail)}</span>
           ${hasMore ? `<button class="event-more-button" type="button" data-event-more="${index}">Ver mais</button><span class="event-detail" hidden>${escapeHtml(event.detail)}</span>` : ""}

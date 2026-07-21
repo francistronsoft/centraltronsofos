@@ -1796,6 +1796,14 @@ tr:last-child td {
   display: block;
 }
 
+.event strong {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
 .event small {
   color: var(--muted);
   font-size: 12px;
@@ -1813,6 +1821,18 @@ tr:last-child td {
   max-width: 100%;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+.event-summary {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.event-detail:not([hidden]) {
+  display: block;
 }
 
 .event-more-button {

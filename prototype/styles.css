@@ -1263,6 +1263,10 @@ tr.clickable-row:hover,
   align-items: start;
 }
 
+.ops-balanced {
+  grid-template-columns: minmax(320px, 0.92fr) minmax(420px, 1.08fr);
+}
+
 .ops-stack {
   display: grid;
   gap: 12px;

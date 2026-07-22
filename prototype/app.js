@@ -819,7 +819,7 @@ function temperatureValue(client) {
 
 function temperatureStatus(client) {
   const value = temperatureValue(client);
-  if (value === null) return { label: "-", tone: "unknown", detail: "sem sensor" };
+  if (value === null || value <= 0) return { label: "-", tone: "unknown", detail: "sem sensor" };
   const label = `${value.toFixed(1)} C`;
   if (value >= 85) return { label, tone: "offline", detail: "critica" };
   if (value >= 70) return { label, tone: "warning", detail: "atencao" };
@@ -1518,7 +1518,10 @@ function renderClientDetail(client) {
           ${detailGauge("Google Drive", drive, drive >= 90 ? "offline" : drive >= 75 ? "warning" : "online", backups.quota?.error || "quota remota")}
         </div>
       </article>
+    </section>
 
+    <section class="ops-grid ops-balanced">
+      <div class="ops-stack">
       <article class="ops-panel">
         <div class="ops-panel-head">
           <div>
@@ -1528,6 +1531,21 @@ function renderClientDetail(client) {
         </div>
         ${databaseGrowthChart(database)}
       </article>
+
+        <article class="ops-panel">
+          <div class="ops-panel-head">
+            <div>
+              <h3>Acoes de suporte</h3>
+              <span>decisao rapida</span>
+            </div>
+          </div>
+          <div class="support-actions">
+            <button class="secondary-button" type="button" onclick="document.querySelector('[data-view-target=&quot;alerts&quot;]').click()">Ver alertas</button>
+            <button class="secondary-button" type="button" onclick="document.querySelector('[data-view-target=&quot;clients&quot;]').click()">Lista clientes</button>
+            <button class="secondary-button" type="button" onclick="document.querySelector('[data-view-target=&quot;oauth&quot;]').click()">0auth</button>
+          </div>
+        </article>
+      </div>
 
       <div class="ops-stack">
         <article class="ops-panel">
@@ -1541,20 +1559,6 @@ function renderClientDetail(client) {
         </article>
         ${detailTemperaturePanel(client)}
       </div>
-
-      <article class="ops-panel">
-        <div class="ops-panel-head">
-          <div>
-            <h3>Acoes de suporte</h3>
-            <span>decisao rapida</span>
-          </div>
-        </div>
-        <div class="support-actions">
-          <button class="secondary-button" type="button" onclick="document.querySelector('[data-view-target=&quot;alerts&quot;]').click()">Ver alertas</button>
-          <button class="secondary-button" type="button" onclick="document.querySelector('[data-view-target=&quot;clients&quot;]').click()">Lista clientes</button>
-          <button class="secondary-button" type="button" onclick="document.querySelector('[data-view-target=&quot;oauth&quot;]').click()">0auth</button>
-        </div>
-      </article>
     </section>
 
     <section class="ops-grid">

@@ -1225,14 +1225,22 @@ function detailMetric(title, value, tone = "neutral", caption = "") {
   `;
 }
 
-function detailTemperature(client) {
+function detailTemperaturePanel(client) {
   const temperature = temperatureStatus(client);
   return `
-    <div class="temperature-detail ${escapeHtml(temperature.tone)}">
-      <span>Temperatura</span>
-      <strong>${escapeHtml(temperature.label === "-" ? "Sem sensor" : temperature.label)}</strong>
-      <small>${escapeHtml(temperature.detail)}</small>
-    </div>
+    <article class="ops-panel temperature-panel">
+      <div class="ops-panel-head">
+        <div>
+          <h3>Temperatura</h3>
+          <span>leitura termica do servidor</span>
+        </div>
+      </div>
+      <div class="temperature-detail ${escapeHtml(temperature.tone)}">
+        <span>Sensor</span>
+        <strong>${escapeHtml(temperature.label === "-" ? "Sem sensor" : temperature.label)}</strong>
+        <small>${escapeHtml(temperature.detail)}</small>
+      </div>
+    </article>
   `;
 }
 
@@ -1342,24 +1350,89 @@ function metricSeriesValues(metrics = {}, valueKeys = [], patterns = []) {
       : "sem horario";
     return { value, label };
   }).filter((point) => Number.isFinite(point.value));
-  return values.slice(-18);
+  return values.slice(-48);
 }
 
-function metricBars(values, tone = "online") {
-  if (!values.length) return `<div class="metric-empty">sem serie historica</div>`;
-  const points = values.map((point) => typeof point === "number" ? { value: point, label: "sem horario" } : point);
-  const max = Math.max(100, ...points.map((point) => point.value));
-  const peak = points.reduce((highest, point) => point.value > highest.value ? point : highest, points[0]);
-  const latest = points[points.length - 1];
-  const bars = points.map((point) => {
-    const height = Math.max(8, Math.min(96, Math.round((point.value / max) * 96)));
-    return `<span title="${escapeHtml(point.label)} - ${escapeHtml(point.value.toFixed(1))}%" style="height:${height}%"></span>`;
-  }).join("");
+function metricLinePath(points, width, height, padding) {
+  if (!points.length) return "";
+  const usableWidth = width - padding.left - padding.right;
+  const usableHeight = height - padding.top - padding.bottom;
+  return points.map((point, index) => {
+    const x = padding.left + (points.length === 1 ? usableWidth / 2 : (index / (points.length - 1)) * usableWidth);
+    const y = padding.top + usableHeight - (Math.max(0, Math.min(100, point.value)) / 100) * usableHeight;
+    return `${index === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
+  }).join(" ");
+}
+
+function metricAreaPath(points, width, height, padding) {
+  const line = metricLinePath(points, width, height, padding);
+  if (!line) return "";
+  const usableWidth = width - padding.left - padding.right;
+  const baseY = height - padding.bottom;
+  const firstX = padding.left;
+  const lastX = padding.left + (points.length === 1 ? usableWidth / 2 : usableWidth);
+  return `${line} L ${lastX.toFixed(1)} ${baseY} L ${firstX.toFixed(1)} ${baseY} Z`;
+}
+
+function metricSummary(points) {
+  const normalizedPoints = points.map((point) => typeof point === "number" ? { value: point, label: "sem horario" } : point);
+  const peak = normalizedPoints.reduce((highest, point) => point.value > highest.value ? point : highest, normalizedPoints[0]);
+  const latest = normalizedPoints[normalizedPoints.length - 1];
+  return { peak, latest };
+}
+
+function performanceLineChart(cpuValues, memoryValues) {
+  const cpuPoints = cpuValues.map((point) => typeof point === "number" ? { value: point, label: "sem horario" } : point);
+  const memoryPoints = memoryValues.map((point) => typeof point === "number" ? { value: point, label: "sem horario" } : point);
+  const points = cpuPoints.length >= memoryPoints.length ? cpuPoints : memoryPoints;
+  if (!cpuPoints.length && !memoryPoints.length) {
+    return `<div class="metric-empty performance-empty">sem serie historica de CPU/memoria</div>`;
+  }
+
+  const width = 720;
+  const height = 260;
+  const padding = { top: 24, right: 22, bottom: 36, left: 42 };
+  const yTicks = [100, 75, 50, 25, 0];
+  const xTicks = points.length
+    ? [0, Math.floor((points.length - 1) / 2), points.length - 1].filter((value, index, array) => array.indexOf(value) === index)
+    : [];
+  const cpuPath = metricLinePath(cpuPoints, width, height, padding);
+  const memoryPath = metricLinePath(memoryPoints, width, height, padding);
+  const memoryArea = metricAreaPath(memoryPoints, width, height, padding);
+  const cpu = cpuPoints.length ? metricSummary(cpuPoints) : null;
+  const memory = memoryPoints.length ? metricSummary(memoryPoints) : null;
+
   return `
-    <div class="mini-bars ${escapeHtml(tone)}">${bars}</div>
-    <div class="metric-chart-caption">
-      <span>Pico ${escapeHtml(peak.value.toFixed(1))}% em ${escapeHtml(peak.label)}</span>
-      <span>Ultima ${escapeHtml(latest.value.toFixed(1))}% em ${escapeHtml(latest.label)}</span>
+    <div class="performance-chart">
+      <div class="performance-legend">
+        <span><i class="cpu"></i>CPU</span>
+        <span><i class="memory"></i>Memoria</span>
+      </div>
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Historico de CPU e memoria">
+        <defs>
+          <linearGradient id="memory-area-gradient" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stop-color="#39c87a" stop-opacity="0.28" />
+            <stop offset="100%" stop-color="#39c87a" stop-opacity="0.04" />
+          </linearGradient>
+        </defs>
+        ${yTicks.map((tick) => {
+          const y = padding.top + ((100 - tick) / 100) * (height - padding.top - padding.bottom);
+          return `<g class="chart-grid"><line x1="${padding.left}" y1="${y.toFixed(1)}" x2="${width - padding.right}" y2="${y.toFixed(1)}"></line><text x="${padding.left - 10}" y="${(y + 4).toFixed(1)}">${tick}</text></g>`;
+        }).join("")}
+        ${xTicks.map((index) => {
+          const x = padding.left + (points.length === 1 ? 0 : (index / (points.length - 1)) * (width - padding.left - padding.right));
+          return `<g class="chart-x"><line x1="${x.toFixed(1)}" y1="${padding.top}" x2="${x.toFixed(1)}" y2="${height - padding.bottom}"></line><text x="${x.toFixed(1)}" y="${height - 12}">${escapeHtml(points[index]?.label || "")}</text></g>`;
+        }).join("")}
+        ${memoryArea ? `<path class="chart-area memory" d="${memoryArea}"></path>` : ""}
+        ${memoryPath ? `<path class="chart-line memory" d="${memoryPath}"></path>` : ""}
+        ${cpuPath ? `<path class="chart-line cpu" d="${cpuPath}"></path>` : ""}
+      </svg>
+    </div>
+    <div class="performance-stats">
+      <span>CPU atual <strong>${escapeHtml(cpu ? `${cpu.latest.value.toFixed(1)}%` : "-")}</strong></span>
+      <span>Pico CPU <strong>${escapeHtml(cpu ? `${cpu.peak.value.toFixed(1)}%` : "-")}</strong></span>
+      <span>Memoria atual <strong>${escapeHtml(memory ? `${memory.latest.value.toFixed(1)}%` : "-")}</strong></span>
+      <span>Pico memoria <strong>${escapeHtml(memory ? `${memory.peak.value.toFixed(1)}%` : "-")}</strong></span>
     </div>
   `;
 }
@@ -1456,19 +1529,18 @@ function renderClientDetail(client) {
         ${databaseGrowthChart(database)}
       </article>
 
-      <article class="ops-panel">
-        <div class="ops-panel-head">
-          <div>
-            <h3>CPU / Memoria</h3>
-            <span>horarios de maior consumo</span>
+      <div class="ops-stack">
+        <article class="ops-panel">
+          <div class="ops-panel-head">
+            <div>
+              <h3>CPU / Memoria</h3>
+              <span>horarios de maior consumo</span>
+            </div>
           </div>
-        </div>
-        <div class="metric-chart-label">CPU</div>
-        ${metricBars(cpuSeries, "warning")}
-        <div class="metric-chart-label">Memoria</div>
-        ${metricBars(memorySeries, "online")}
-        ${detailTemperature(client)}
-      </article>
+          ${performanceLineChart(cpuSeries, memorySeries)}
+        </article>
+        ${detailTemperaturePanel(client)}
+      </div>
 
       <article class="ops-panel">
         <div class="ops-panel-head">
@@ -1508,7 +1580,7 @@ function renderClientDetail(client) {
           ${detailItem("Alias", database.alias || database.databaseAlias)}
         </div>
       </article>
-    </div>
+    </section>
 
     <section class="ops-grid">
       <article class="ops-panel">

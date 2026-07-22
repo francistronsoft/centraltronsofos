@@ -767,6 +767,11 @@ function publicInstallation(db, installation) {
   const client = db.clients.find((item) => item.id === installation.clientId);
   const reseller = db.resellers.find((item) => item.id === client?.resellerId);
   const status = effectiveInstallationStatus(installation);
+  const googleDriveCredential = [...(db.oauthCredentials || [])]
+    .reverse()
+    .find((credential) => credential.provider === "google"
+      && credential.installationId === installation.installationId
+      && credential.status === "connected");
 
   return {
     id: installation.id,
@@ -779,6 +784,11 @@ function publicInstallation(db, installation) {
     host: installation.host,
     cluster: installation.cluster || {},
     backups: installation.backups || {},
+    googleDrive: googleDriveCredential ? {
+      accountEmail: googleDriveCredential.accountEmail || "",
+      connectedAt: googleDriveCredential.connectedAt || null,
+      updatedAt: googleDriveCredential.updatedAt || null
+    } : null,
     metrics: installation.metrics || {},
     client,
     reseller

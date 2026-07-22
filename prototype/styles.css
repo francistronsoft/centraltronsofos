@@ -787,6 +787,10 @@ p {
   border-left: 4px solid #6f8494;
 }
 
+.temperature-card-wrap {
+  max-width: 520px;
+}
+
 .client-avatar {
   display: grid;
   flex: 0 0 auto;
@@ -1265,6 +1269,10 @@ tr.clickable-row:hover,
 
 .ops-balanced {
   grid-template-columns: minmax(320px, 0.92fr) minmax(420px, 1.08fr);
+}
+
+.ops-detail-main {
+  grid-template-columns: minmax(340px, 0.88fr) minmax(460px, 1.12fr);
 }
 
 .ops-stack {

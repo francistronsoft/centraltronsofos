@@ -534,6 +534,7 @@ async function loadCentralData() {
         databaseInfo: installation.database || {},
         host: installation.host || {},
         backups: installation.backups || {},
+        googleDrive: installation.googleDrive || null,
         metrics: installation.metrics || {},
         cluster: installation.cluster || {},
         status: installation.status,
@@ -1467,6 +1468,7 @@ function renderClientDetail(client) {
   const database = client.databaseInfo || {};
   const host = client.host || {};
   const backups = client.backups || {};
+  const googleDrive = client.googleDrive || {};
   const metrics = client.metrics || {};
   const cluster = client.cluster || {};
   const location = [client.city, client.state].filter(Boolean).join(" / ") || "-";
@@ -1515,35 +1517,31 @@ function renderClientDetail(client) {
         <div class="gauge-grid">
           ${detailGauge("Disco servidor", disk, diskTone, "uso geral informado")}
           ${detailGauge("Disco backup", backupDisk, backupDisk >= 90 ? "offline" : backupDisk >= 75 ? "warning" : "online", backups.backupDir || "diretorio de backup")}
-          ${detailGauge("Google Drive", drive, drive >= 90 ? "offline" : drive >= 75 ? "warning" : "online", backups.quota?.error || "quota remota")}
+          ${detailGauge("Google Drive", drive, drive >= 90 ? "offline" : drive >= 75 ? "warning" : "online", googleDrive.accountEmail || backups.quota?.error || "quota remota")}
         </div>
       </article>
     </section>
 
-    <section class="ops-grid ops-balanced">
+    <section class="ops-grid ops-detail-main">
       <div class="ops-stack">
-      <article class="ops-panel">
-        <div class="ops-panel-head">
-          <div>
-            <h3>Crescimento do banco</h3>
-            <span>progressao por semana ou mes</span>
+        <article class="ops-panel">
+          <div class="ops-panel-head"><h3>Servidor</h3></div>
+          <div class="detail-grid compact">
+            ${detailItem("Hostname", host.hostname)}
+            ${detailItem("IP", host.ip)}
+            ${detailItem("Sistema", host.os)}
+            ${detailItem("Uptime", metrics.hostUptimeSeconds ? `${Math.round(Number(metrics.hostUptimeSeconds) / 3600)} h` : "-")}
           </div>
-        </div>
-        ${databaseGrowthChart(database)}
-      </article>
+        </article>
 
         <article class="ops-panel">
           <div class="ops-panel-head">
             <div>
-              <h3>Acoes de suporte</h3>
-              <span>decisao rapida</span>
+              <h3>Crescimento do banco</h3>
+              <span>progressao por semana ou mes</span>
             </div>
           </div>
-          <div class="support-actions">
-            <button class="secondary-button" type="button" onclick="document.querySelector('[data-view-target=&quot;alerts&quot;]').click()">Ver alertas</button>
-            <button class="secondary-button" type="button" onclick="document.querySelector('[data-view-target=&quot;clients&quot;]').click()">Lista clientes</button>
-            <button class="secondary-button" type="button" onclick="document.querySelector('[data-view-target=&quot;oauth&quot;]').click()">0auth</button>
-          </div>
+          ${databaseGrowthChart(database)}
         </article>
       </div>
 
@@ -1557,22 +1555,12 @@ function renderClientDetail(client) {
           </div>
           ${performanceLineChart(cpuSeries, memorySeries)}
         </article>
-        ${detailTemperaturePanel(client)}
+        <div class="temperature-card-wrap">${detailTemperaturePanel(client)}</div>
       </div>
     </section>
 
     <section class="ops-grid">
-      <article class="ops-panel">
-        <div class="ops-panel-head"><h3>Servidor</h3></div>
-        <div class="detail-grid compact">
-          ${detailItem("Hostname", host.hostname)}
-          ${detailItem("IP", host.ip)}
-          ${detailItem("Sistema", host.os)}
-          ${detailItem("Uptime", metrics.hostUptimeSeconds ? `${Math.round(Number(metrics.hostUptimeSeconds) / 3600)} h` : "-")}
-        </div>
-      </article>
-
-      <article class="ops-panel">
+      <article class="ops-panel ops-panel-wide">
         <div class="ops-panel-head"><h3>Banco de dados</h3></div>
         <div class="detail-grid compact">
           ${detailItem("Engine", database.engine || "Firebird")}
